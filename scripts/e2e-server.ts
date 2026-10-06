@@ -1,20 +1,28 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp } from "../server/app.ts";
-import { Store } from "../server/store.ts";
+import { Accounts, createAccountsApp } from "../server/accounts.ts";
 import { hashPassword } from "../server/auth.ts";
 const directory = mkdtempSync(join(tmpdir(), "memory-e2e-"));
-const store = new Store(join(directory, "test.sqlite"));
-const server = createApp(store, {
+const accounts = new Accounts(join(directory, "test.sqlite"), {
+  username: "alex@pansier.nl",
   passwordHash: hashPassword("test-password-e2e"),
+  mcpToken: "e2e-test-token",
+});
+accounts.add(
+  "other@example.test",
+  hashPassword("test-password-e2e"),
+  "other-e2e-token",
+);
+const server = createAccountsApp(accounts, {
+  loginLimit: 100,
   origin: "http://127.0.0.1:4173",
   mcpToken: "e2e-test-token",
   serveWeb: true,
 }).listen(4173, "0.0.0.0");
 function stop() {
   server.close(() => {
-    store.close();
+    accounts.close();
     rmSync(directory, { recursive: true, force: true });
     process.exit(0);
   });

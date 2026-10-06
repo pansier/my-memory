@@ -26,7 +26,10 @@ test("HTTP login, cookie access, CSRF, bearer access, image validation and store
         await fetch(root + "/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: "test-password" }),
+          body: JSON.stringify({
+            username: "owner",
+            password: "test-password",
+          }),
         })
       ).status,
       403,
@@ -37,7 +40,7 @@ test("HTTP login, cookie access, CSRF, bearer access, image validation and store
         "Content-Type": "application/json",
         Origin: "http://localhost",
       },
-      body: JSON.stringify({ password: "test-password" }),
+      body: JSON.stringify({ username: "owner", password: "test-password" }),
     });
     assert.equal(login.status, 200);
     const cookie = login.headers.get("set-cookie")!.split(";")[0];

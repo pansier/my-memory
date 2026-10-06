@@ -19,7 +19,11 @@ if (!existsSync(config)) {
 const settings = JSON.parse(readFileSync(config));
 writeFileSync(
   "data/LOGIN.txt",
-  "Ontwikkelwachtwoord voor My Memory: " + settings.password + "\n",
+  "Gebruikersnaam: " +
+    (process.env.APP_USERNAME ?? "alex@pansier.nl") +
+    "\nOntwikkelwachtwoord voor My Memory: " +
+    settings.password +
+    "\n",
   { mode: 0o600 },
 );
 const preview = process.argv.includes("--preview");
@@ -28,6 +32,7 @@ console.log(
 );
 const env = {
   ...process.env,
+  APP_USERNAME: process.env.APP_USERNAME ?? "alex@pansier.nl",
   APP_PASSWORD_HASH: settings.passwordHash,
   MCP_TOKEN: settings.mcpToken,
   APP_ORIGIN:

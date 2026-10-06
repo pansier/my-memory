@@ -6,7 +6,9 @@ import {
   now,
 } from "../../shared/model";
 export type Conflict = { id: string; local: Entity; remote: Entity | null };
+export type Account = { id: string; username: string };
 export type Snapshot = {
+  account: Account | null;
   entities: Entity[];
   pending: (Mutation & { dispatched?: boolean })[];
   conflicts: Conflict[];
@@ -14,37 +16,123 @@ export type Snapshot = {
   authenticated: boolean;
 };
 const blank = (): Snapshot => ({
+  account: null,
   entities: [],
   pending: [],
   conflicts: [],
   lastSync: null,
   authenticated: false,
 });
-const db = openDB("my-memory-v1", 1, {
-  upgrade(db) {
-    db.createObjectStore("state");
-    db.createObjectStore("images");
-  },
-});
+function openAccountDB(name: string) {
+  return openDB(name, 1, {
+    upgrade(db) {
+      db.createObjectStore("state");
+      db.createObjectStore("images");
+    },
+  });
+}
+const legacyDB = openAccountDB("my-memory-v1");
+let db = legacyDB;
+let activeAccount: Account | null = null;
+const profileKey = "my-memory-active-account";
+function validAccount(account: unknown): account is Account {
+  if (!account || typeof account !== "object") return false;
+  const a = account as Account;
+  return (
+    typeof a.username === "string" &&
+    typeof a.id === "string" &&
+    (a.id === "owner" || /^[0-9a-f-]{36}$/.test(a.id))
+  );
+}
+export async function accountFetch(url: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  if (activeAccount) headers.set("X-Memory-Account", activeAccount.id);
+  return fetch(url, { ...init, headers });
+}
+async function selectAccount(account: Account, broadcast = true) {
+  if (!validAccount(account)) throw new Error("Ongeldig account.");
+  await lock("memory-sync", () =>
+    lock("memory-write", async () => {
+      db = openAccountDB("my-memory-v2-" + account.id);
+      const target = await db;
+      // The original browser cache belongs only to the existing owner. Import it
+      // after the server has identified that owner; never into another account.
+      if (
+        account.id === "owner" &&
+        !(await target.get("state", "legacy-imported"))
+      ) {
+        const legacy = await legacyDB;
+        const old = await legacy.get("state", "owner");
+        if (old && !(await target.get("state", "owner"))) {
+          for (const key of await legacy.getAllKeys("images"))
+            await target.put("images", await legacy.get("images", key), key);
+          await target.put("state", { ...old, account }, "owner");
+        }
+        await target.put("state", true, "legacy-imported");
+        await legacy.clear("state");
+        await legacy.clear("images");
+      }
+      activeAccount = account;
+      uploadedImages.clear();
+      localStorage.setItem(profileKey, JSON.stringify(account));
+      await read();
+      if (broadcast) channel.postMessage({ type: "account", account });
+    }),
+  );
+}
 export let snapshot: Snapshot = blank();
 let listeners = new Set<() => void>();
 let syncing = false;
 export let syncStatus = "Laden…";
 const uploadedImages = new Set<string>();
 const channel = new BroadcastChannel("memory");
-channel.onmessage = () => {
-  void read();
+channel.onmessage = (event) => {
+  if (event.data?.type === "account") {
+    if (event.data.account) void selectAccount(event.data.account, false);
+    else {
+      activeAccount = null;
+      snapshot = blank();
+      uploadedImages.clear();
+      listeners.forEach((fn) => fn());
+    }
+  } else if (event.data?.accountId === activeAccount?.id) void read();
 };
 async function lock<T>(name: string, fn: () => Promise<T>): Promise<T> {
   if (navigator.locks) return navigator.locks.request(name, fn);
   return fn();
 }
 async function read() {
-  snapshot = (await (await db).get("state", "owner")) ?? blank();
+  const account = activeAccount;
+  const database = db;
+  const state = account
+    ? ((await (await database).get("state", "owner")) ?? blank())
+    : blank();
+  if (activeAccount?.id !== account?.id || db !== database) return;
+  snapshot = { ...state, account };
   listeners.forEach((fn) => fn());
 }
 export async function init() {
-  await read();
+  let saved: unknown;
+  try {
+    saved = JSON.parse(localStorage.getItem(profileKey) ?? "null");
+  } catch {}
+  if (validAccount(saved)) await selectAccount(saved, false);
+  if (navigator.onLine) {
+    try {
+      const response = await fetch("/api/session");
+      if (response.ok) {
+        const { account } = await response.json();
+        if (validAccount(account)) {
+          await selectAccount(account, false);
+          await write((s) => {
+            s.authenticated = true;
+          });
+        }
+      }
+    } catch {
+      /* Existing account's offline data stays available. */
+    }
+  }
   if (snapshot.authenticated) void sync();
 }
 export function subscribe(fn: () => void) {
@@ -54,16 +142,29 @@ export function subscribe(fn: () => void) {
   };
 }
 async function write(fn: (s: Snapshot) => void) {
+  const account = activeAccount;
+  if (!account) throw new Error("Log eerst in.");
   await lock("memory-write", async () => {
-    const s: Snapshot = (await (await db).get("state", "owner")) ?? blank();
+    if (activeAccount?.id !== account.id)
+      throw new Error("Het actieve account is gewijzigd.");
+    const database = await db;
+    const s: Snapshot = (await database.get("state", "owner")) ?? blank();
+    if (activeAccount?.id !== account.id)
+      throw new Error("Het actieve account is gewijzigd.");
+    s.account = account;
     fn(s);
-    await (await db).put("state", s, "owner");
+    await database.put("state", s, "owner");
+    if (activeAccount?.id !== account.id) return;
     snapshot = s;
     listeners.forEach((f) => f());
-    channel.postMessage("changed");
+    channel.postMessage({ type: "changed", accountId: account.id });
   });
 }
-export async function setAuthenticated(value: boolean) {
+export async function setAuthenticated(value: boolean, account?: Account) {
+  if (value) {
+    if (!account) throw new Error("Account ontbreekt.");
+    await selectAccount(account);
+  }
   await write((s) => {
     s.authenticated = value;
   });
@@ -175,7 +276,7 @@ export async function resolveConflict(
   void sync();
 }
 export async function imageBlob(id: string): Promise<Blob | undefined> {
-  return (await db).get("images", id);
+  return activeAccount ? (await db).get("images", id) : undefined;
 }
 export async function addImage(file: File): Promise<string> {
   if (
@@ -185,8 +286,12 @@ export async function addImage(file: File): Promise<string> {
     file.size > 10 * 1024 * 1024
   )
     throw new Error("Kies een PNG, JPEG, WebP of GIF van maximaal 10 MB.");
+  const accountId = activeAccount?.id;
+  if (!accountId) throw new Error("Log eerst in.");
   const id = crypto.randomUUID();
   await (await db).put("images", file, id);
+  if (activeAccount?.id !== accountId)
+    throw new Error("Het actieve account is gewijzigd.");
   return id;
 }
 export async function offlineDownload() {
@@ -199,10 +304,14 @@ export async function offlineDownload() {
 export async function cacheImage(id: string) {
   const local = await imageBlob(id);
   if (local) return local;
-  const res = await fetch("/api/images/" + id);
+  const database = await db;
+  const accountId = activeAccount?.id;
+  const res = await accountFetch("/api/images/" + id);
   if (!res.ok) throw new Error("Afbeelding kon niet worden gedownload.");
   const blob = await res.blob();
-  await (await db).put("images", blob, id);
+  if (activeAccount?.id !== accountId)
+    throw new Error("Het actieve account is gewijzigd.");
+  await database.put("images", blob, id);
   window.dispatchEvent(new Event("memory-images"));
   return blob;
 }
@@ -256,7 +365,7 @@ export async function sync() {
             for (const id of m.entity.imageIds) {
               const blob = await imageBlob(id);
               if (blob && !uploadedImages.has(id)) {
-                const res = await fetch("/api/images/" + id, {
+                const res = await accountFetch("/api/images/" + id, {
                   method: "PUT",
                   body: blob,
                 });
@@ -264,7 +373,7 @@ export async function sync() {
                 uploadedImages.add(id);
               }
             }
-        const res = await fetch("/api/sync", {
+        const res = await accountFetch("/api/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -370,8 +479,10 @@ export async function clearLocal() {
     });
   });
   uploadedImages.clear();
+  activeAccount = null;
+  localStorage.removeItem(profileKey);
   snapshot = blank();
-  channel.postMessage("changed");
+  channel.postMessage({ type: "account", account: null });
   listeners.forEach((f) => f());
 }
 window.addEventListener("online", () => {

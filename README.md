@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173`. Het ontwikkelwachtwoord en MCP-token worden eenmalig lokaal aangemaakt in `data/dev-config.json`; deze map wordt nooit gecommit. Gebruik het wachtwoord uit dat bestand om in te loggen. De API draait op poort 3001. Bij een preview met een andere origin: `APP_ORIGIN=https://jouw-preview-adres npm run dev`.
+Open `http://localhost:5173`. Het ontwikkelwachtwoord en MCP-token worden eenmalig lokaal aangemaakt in `data/dev-config.json`; deze map wordt nooit gecommit. Log in met `alex@pansier.nl` en het wachtwoord uit dat bestand. De API draait op poort 3001. Bij een preview met een andere origin: `APP_ORIGIN=https://jouw-preview-adres npm run dev`.
 
 Voor een preview van de gebouwde app met dezelfde ontwikkellogin: `npm run build` en daarna `npm run preview`. De login staat ook apart in `data/LOGIN.txt`.
 
@@ -52,4 +52,19 @@ Voor een andere omgeving: `npx playwright install --with-deps chromium` en stel 
 - [VPS-deploy, back-up, herstel en beheer](docs/VPS.md)
 - [Voortgang en bewijs per bouwstap](docs/VOORTGANG.md)
 
-De code is geschikt om vanuit deze GitHub-repository naar een VPS te deployen. Docker Compose en Caddy zijn voorbereid. Het voorlopige productieadres is `https://memory.pansier.nl`; de nieuwe TransIP-VPS is `37.97.228.211`. DNS en de installatie moeten nog worden uitgevoerd. Het script `scripts/deploy-vps.sh` automatiseert de eerste installatie vanaf een SSH-terminal op de VPS; zie [VPS-deploy](docs/VPS.md). Een daadwerkelijke VPS-deploy, publiek HTTPS-adres, pushontvangst op echte iPhone/Mac en de accountkoppeling in ChatGPT/Codex blijven deploymentcontroles.
+De productie draait op `https://memory.pansier.nl`, op de TransIP-VPS met beheernaam MyMemory (`alexpansier-vps3`, `37.97.228.211`). De VPS heeft een eigen SSH-beheersleutel; vanaf Alex' Mac werkt `ssh MyMemory`.
+
+De code is geschikt om vanuit deze GitHub-repository naar een VPS te deployen. Docker Compose en Caddy zijn voorbereid. Het voorlopige productieadres is `https://memory.pansier.nl`; de nieuwe TransIP-VPS is `37.97.228.211`. DNS en HTTPS zijn ingericht. Het script `scripts/deploy-vps.sh` automatiseert de eerste installatie vanaf een SSH-terminal op de VPS; zie [VPS-deploy](docs/VPS.md). Een daadwerkelijke VPS-deploy, publiek HTTPS-adres, pushontvangst op echte iPhone/Mac en de accountkoppeling in ChatGPT/Codex blijven deploymentcontroles.
+
+## Privéaccounts
+
+Elk account heeft een gebruikersnaam, wachtwoord, eigen notities, afbeeldingen, herinneringen en MCP-token. Alle accounts hebben dezelfde apprechten; notities worden niet gedeeld. Ook de offline browseropslag is per account gescheiden. Het bestaande account (`APP_USERNAME`, standaard `alex@pansier.nl`) behoudt de oorspronkelijke database, login en MCP-token.
+
+Extra accounts worden door de serverbeheerder aangemaakt; de app heeft geen openbare registratie. Op de VPS:
+
+```sh
+sudo docker compose --project-directory /opt/my-memory exec memory npm run account -- list
+sudo docker compose --project-directory /opt/my-memory exec memory npm run account -- add "gebruiker@example.nl"
+```
+
+Het tweede commando bewaart de nieuwe login in een privébestand onder `/data/logins/` en toont uitsluitend het bestandspad. Het account is meteen bruikbaar. Deel alleen de gegevens van die gebruiker. Back-ups bevatten de accountregistratie en alle afzonderlijke gebruikersdatabases; zie [VPS-beheer](docs/VPS.md).

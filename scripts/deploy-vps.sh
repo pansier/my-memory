@@ -76,6 +76,7 @@ const settings = {
   NODE_ENV: 'production',
   MEMORY_DOMAIN: domain,
   APP_ORIGIN: `https://${domain}`,
+  APP_USERNAME: 'alex@pansier.nl',
   APP_PASSWORD_HASH: `scrypt:${salt}:${scryptSync(password, salt, 64).toString('hex')}`,
   MCP_TOKEN: randomBytes(32).toString('hex'),
   PORT: '3001',
@@ -84,7 +85,7 @@ const settings = {
   VAPID_PUBLIC_KEY: vapid.getPublicKey().toString('base64url'),
   VAPID_PRIVATE_KEY: Buffer.concat([Buffer.alloc(32 - privateKey.length), privateKey]).toString('base64url'),
 };
-writeFileSync('data/LOGIN.production.txt', `MyMemory: https://${domain}\nWachtwoord: ${password}\n`, {mode: 0o600, flag: 'wx'});
+writeFileSync('data/LOGIN.production.txt', `MyMemory: https://${domain}\nGebruikersnaam: ${settings.APP_USERNAME}\nWachtwoord: ${password}\n`, {mode: 0o600, flag: 'wx'});
 writeFileSync('.env', Object.entries(settings).map(([key, value]) => `${key}=${value}`).join('\n') + '\n', {mode: 0o600, flag: 'wx'});
 NODE
 fi

@@ -1,5 +1,4 @@
-import { createApp } from "./app.ts";
-import { Store } from "./store.ts";
+import { Accounts, createAccountsApp } from "./accounts.ts";
 import { tick } from "./planner.ts";
 import webpush from "web-push";
 const production = process.env.NODE_ENV === "production";
@@ -17,10 +16,15 @@ if (
   throw new Error(
     "Production needs HTTPS APP_ORIGIN and an MCP_TOKEN of at least 32 characters.",
   );
-const store = new Store(process.env.DATABASE_PATH ?? "data/memory.sqlite");
-const app = createApp(store, {
-  passwordHash,
-  mcpToken: process.env.MCP_TOKEN,
+const accounts = new Accounts(
+  process.env.DATABASE_PATH ?? "data/memory.sqlite",
+  {
+    username: process.env.APP_USERNAME ?? "alex@pansier.nl",
+    passwordHash,
+    mcpToken: process.env.MCP_TOKEN,
+  },
+);
+const app = createAccountsApp(accounts, {
   production,
   origin: process.env.APP_ORIGIN,
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY,
@@ -40,7 +44,15 @@ if (
   timer = setInterval(() => {
     if (running) return;
     running = true;
-    void tick(store, (s, p, o) => webpush.sendNotification(s, p, o))
+    void Promise.all(
+      accounts
+        .all()
+        .map((account) =>
+          tick(accounts.store(account), (s, p, o) =>
+            webpush.sendNotification(s, p, o),
+          ),
+        ),
+    )
       .catch((e) => console.error("Planner failure", e.message))
       .finally(() => (running = false));
   }, 15000);
@@ -54,7 +66,7 @@ const http = app.listen(
 function stop() {
   if (timer) clearInterval(timer);
   http.close(() => {
-    store.close();
+    accounts.close();
     process.exit(0);
   });
 }

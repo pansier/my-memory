@@ -1,6 +1,6 @@
 # Later deployen vanuit GitHub
 
-Deze configuratie staat klaar voor een Linux-VPS met Docker Compose. Het voorlopige productieadres is `https://memory.pansier.nl`. De nieuwe TransIP-VPS is `alexpansier-vps3`, met IPv4-adres `37.97.228.211`, gebruikersnaam `alexpansier`, Ubuntu 26.04 LTS, 1 core en 2 GB RAM. DNS en de daadwerkelijke app-installatie zijn nog niet bevestigd. De cloudomgeving kan geen publieke SSH-verbinding naar deze VPS maken; installatie kan vanaf Alex' Mac met de geselecteerde Mac-sleutel.
+Deze configuratie staat klaar voor een Linux-VPS met Docker Compose. Het voorlopige productieadres is `https://memory.pansier.nl`. De nieuwe TransIP-VPS is `alexpansier-vps3`, met IPv4-adres `37.97.228.211`, gebruikersnaam `alexpansier`, Ubuntu 26.04 LTS, 1 core en 2 GB RAM. De productie draait op `https://memory.pansier.nl`; DNS, HTTPS, login, opslag na herstart en MCP zijn gecontroleerd. De beheernaam in TransIP is MyMemory. De eigen Mac-beheersleutel is `~/.ssh/alexpansier-vps3`; de SSH-alias is `MyMemory`. De cloudomgeving kan geen publieke SSH-verbinding naar deze VPS maken; installatie kan vanaf Alex' Mac met de geselecteerde Mac-sleutel.
 
 ## Installatie vanaf de Mac
 
@@ -44,13 +44,13 @@ Op iPhone/iOS 16.4+ vereist webpush een geïnstalleerde webapp op het beginscher
 
 ## Back-up en herstel
 
-Alle privégegevens, inclusief afbeeldingen, sessies en plannerstatus, staan in het `memory_data`-volume. Maak een consistente online SQLite-back-up:
+Alle privégegevens, inclusief afbeeldingen, sessies, accountregistratie en plannerstatus, staan in het `memory_data`-volume. Het oorspronkelijke account gebruikt `/data/memory.sqlite`; extra accounts krijgen `/data/users/<account-id>/memory.sqlite`. `/data/accounts.sqlite` koppelt gebruikersnamen, wachtwoordhashes en tokenhashes aan deze privéwerkruimtes. Maak een consistente online SQLite-back-up:
 
 ```sh
 docker compose exec memory npm run backup
 ```
 
-Dit schrijft naar `/data/backups`. Exporteer de back-up buiten de VPS, bijvoorbeeld:
+Dit schrijft één gedateerde map naar `/data/backups` met `memory.sqlite`, `accounts.sqlite` en `users/<account-id>/memory.sqlite`. Elke database wordt via de online SQLite-back-upfunctie gekopieerd; de gekopieerde accountregistratie bepaalt welke gebruikersdatabases bij dezelfde back-up horen. Exporteer de back-up buiten de VPS, bijvoorbeeld:
 
 ```sh
 docker compose cp memory:/data/backups ./backups
@@ -61,8 +61,8 @@ Bewaar versleutelde back-ups op een andere locatie. Maak dagelijks een back-up e
 Herstelprocedure:
 
 1. Bewaar de huidige database als extra herstelkopie. Stop de memory-service zodat de database niet in gebruik is.
-2. Kopieer de gewenste back-up als `/data/memory.sqlite` naar het volume. Gebruik tijdelijk een `docker compose run --no-deps --user root --entrypoint sh memory`-container om de bestanden in het volume te beheren.
-3. Verwijder uitsluitend de bij die vervangen database horende oude `memory.sqlite-wal` en `memory.sqlite-shm`, nadat de service volledig is gestopt. Zet eigenaar op UID/GID 1000.
+2. Kies één volledige gedateerde back-upmap. Herstel `memory.sqlite` naar `/data/memory.sqlite`, `accounts.sqlite` naar `/data/accounts.sqlite` en de volledige `users/`-structuur naar `/data/users/`. Voor oude back-ups van vóór privéaccounts herstel je alleen de oorspronkelijke `memory.sqlite`. Bewaar `.env` en de privé-loginbestanden afzonderlijk. Gebruik tijdelijk een `docker compose run --no-deps --user root --entrypoint sh memory`-container om de bestanden in het volume te beheren.
+3. Verwijder uitsluitend de bij elke vervangen database horende oude `memory.sqlite-wal` en `memory.sqlite-shm`, nadat de service volledig is gestopt. Zet eigenaar op UID/GID 1000.
 4. Start memory opnieuw. Controleer login, tekst, afbeeldingen, archief, MCP en planner. Herstel kan een oudere plannerstatus terugzetten; controleer geplande herinneringen en abonnementen vóór heractiveren.
 5. Test op een apparaat waarvan lokale wijzigingen vooraf zijn geëxporteerd. De client heeft versies uit de nieuwere database; behandel eventuele conflicten bewust.
 

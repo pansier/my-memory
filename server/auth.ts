@@ -24,12 +24,15 @@ export function verifyPassword(password: string, hash: string) {
     return false;
   }
 }
-export function auth(store: Store, mcpToken?: string) {
+export function auth(store: Store, mcpToken?: string, mcpTokenHash?: string) {
   return (req: Request, res: Response, next: NextFunction) => {
     const bearer = req.headers.authorization?.startsWith("Bearer ")
       ? req.headers.authorization.slice(7)
       : "";
-    if (bearer && mcpToken && sha(bearer) === sha(mcpToken)) {
+    if (
+      bearer &&
+      sha(bearer) === (mcpTokenHash ?? (mcpToken ? sha(mcpToken) : ""))
+    ) {
       res.locals.bearer = true;
       return next();
     }

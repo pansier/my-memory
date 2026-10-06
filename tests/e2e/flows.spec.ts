@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
-async function login(page: Page) {
+async function login(page: Page, username = "alex@pansier.nl") {
   await page.goto("/");
+  await page.getByLabel("Gebruikersnaam", { exact: true }).fill(username);
   await page
     .getByLabel("Wachtwoord", { exact: true })
     .fill("test-password-e2e");
@@ -340,11 +341,140 @@ test("lost sync response retries the same operation and never duplicates the poi
   await synced(page);
   expect(ids.length).toBeGreaterThanOrEqual(2);
   expect(new Set(ids).size).toBe(1);
-  const result = await page.request.get("/api/entities");
+  const result = await page.request.get("/api/entities", {
+    headers: { "X-Memory-Account": "owner" },
+  });
   const data = await result.json();
   expect(
     data.entities.filter((e: { html?: string }) =>
       e.html?.includes("Veilige herhaling"),
     ),
   ).toHaveLength(1);
+});
+
+test("private accounts never show each other's notes after logout and reload", async ({
+  page,
+}) => {
+  const ownerText = "Alleen Alex " + crypto.randomUUID();
+  const otherText = "Alleen ander account " + crypto.randomUUID();
+  const logout = async () => {
+    await page.locator("button.account").click();
+    await page.getByRole("button", { name: "Uitloggen", exact: false }).click();
+    await expect(
+      page.getByLabel("Gebruikersnaam", { exact: true }),
+    ).toBeVisible();
+  };
+  await login(page);
+  await quick(page, ownerText);
+  await synced(page);
+  await logout();
+  await login(page, "other@example.test");
+  await synced(page);
+  await expect(page.getByText(ownerText, { exact: true })).toHaveCount(0);
+  await quick(page, otherText);
+  await synced(page);
+  await page.reload();
+  await synced(page);
+  await expect(page.getByText(otherText, { exact: true })).toBeVisible();
+  await expect(page.getByText(ownerText, { exact: true })).toHaveCount(0);
+  await logout();
+  await login(page);
+  await synced(page);
+  await expect(page.getByText(ownerText, { exact: true })).toBeVisible();
+  await expect(page.getByText(otherText, { exact: true })).toHaveCount(0);
+});
+
+test("legacy offline cache is imported only into the original owner's account", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const title = "Oude privé-inbox " + crypto.randomUUID();
+  await page.evaluate(async (title) => {
+    const entity = {
+      id: crypto.randomUUID(),
+      version: 0,
+      updatedAt: new Date().toISOString(),
+      deleted: false,
+      type: "block",
+      noteId: null,
+      kind: "task",
+      html: "<p>" + title + "</p>",
+      indent: 0,
+      position: Date.now(),
+      done: false,
+      reusable: null,
+      dueAt: null,
+      tags: [],
+      imageIds: [],
+    };
+    const request = indexedDB.open("my-memory-v1", 1);
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const tx = db.transaction("state", "readwrite");
+    tx.objectStore("state").put(
+      {
+        entities: [entity],
+        pending: [{ opId: crypto.randomUUID(), baseVersion: 0, entity }],
+        conflicts: [],
+        lastSync: null,
+        authenticated: true,
+      },
+      "owner",
+    );
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }, title);
+  await login(page, "other@example.test");
+  await synced(page);
+  await expect(page.getByText(title, { exact: true })).toHaveCount(0);
+  await page.locator("button.account").click();
+  await page.getByRole("button", { name: "Uitloggen", exact: false }).click();
+  await expect(
+    page.getByLabel("Gebruikersnaam", { exact: true }),
+  ).toBeVisible();
+  await login(page);
+  await synced(page);
+  await expect(page.getByText(title, { exact: true })).toBeVisible();
+});
+
+test("switching account updates other tabs without mixing private data", async ({
+  page,
+  context,
+}) => {
+  const privateText = "Alex-tabcontrole " + crypto.randomUUID();
+  await login(page);
+  await quick(page, privateText);
+  await synced(page);
+  const other = await context.newPage();
+  await other.goto("/");
+  await expect(
+    other.getByRole("heading", { name: "Inbox.", exact: true }),
+  ).toBeVisible();
+  await other.locator("button.account").click();
+  await other
+    .getByRole("button", { name: "Opnieuw inloggen", exact: false })
+    .click();
+  await other
+    .getByLabel("Gebruikersnaam", { exact: true })
+    .fill("other@example.test");
+  await other
+    .getByLabel("Wachtwoord", { exact: true })
+    .fill("test-password-e2e");
+  await other.getByRole("button", { name: "Open mijn geheugen" }).click();
+  await synced(other);
+  await expect(page.locator("button.account")).toContainText(
+    "other@example.test",
+  );
+  await expect(page.getByText(privateText, { exact: true })).toHaveCount(0);
+  await expect(other.getByText(privateText, { exact: true })).toHaveCount(0);
+  const otherText = "Ander-tabcontrole " + crypto.randomUUID();
+  await quick(other, otherText);
+  await synced(other);
+  await expect(page.getByText(otherText, { exact: true })).toBeVisible();
+  await other.close();
 });

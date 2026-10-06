@@ -12,6 +12,11 @@ import { syncSchema, id } from "../shared/model.ts";
 import { handleMcp } from "./mcp.ts";
 export type Config = {
   passwordHash: string;
+  username?: string;
+  loginLimit?: number;
+  loginLimiter?: express.RequestHandler;
+  accountId?: string;
+  mcpTokenHash?: string;
   mcpToken?: string;
   origin?: string;
   production?: boolean;
@@ -20,6 +25,10 @@ export type Config = {
 };
 export function createApp(store: Store, config: Config) {
   const app = express();
+  const account = {
+    id: config.accountId ?? "owner",
+    username: config.username ?? "owner",
+  };
   app.disable("x-powered-by");
   if (config.production) app.set("trust proxy", 1);
   app.use(
@@ -55,16 +64,32 @@ export function createApp(store: Store, config: Config) {
   });
   app.post(
     "/api/login",
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      limit: 10,
-      standardHeaders: "draft-8",
-      legacyHeaders: false,
-    }),
+    config.loginLimiter ??
+      rateLimit({
+        windowMs: 15 * 60 * 1000,
+        limit: config.loginLimit ?? 10,
+        standardHeaders: "draft-8",
+        legacyHeaders: false,
+      }),
     (req, res) => {
-      const p = z.object({ password: z.string().max(500) }).safeParse(req.body);
-      if (!p.success || !verifyPassword(p.data.password, config.passwordHash))
-        return res.status(401).json({ error: "Het wachtwoord klopt niet." });
+      const p = z
+        .object({
+          username: z.string().max(254),
+          password: z.string().max(500),
+        })
+        .safeParse(req.body);
+      const validPassword = verifyPassword(
+        p.success ? p.data.password : "",
+        config.passwordHash,
+      );
+      if (
+        !p.success ||
+        p.data.username.trim().toLowerCase() !== account.username ||
+        !validPassword
+      )
+        return res
+          .status(401)
+          .json({ error: "Gebruikersnaam of wachtwoord klopt niet." });
       const session = randomBytes(32).toString("hex");
       const expiry = Date.now() + 30 * 86400000;
       store.db.prepare("DELETE FROM sessions WHERE expires<?").run(Date.now());
@@ -79,13 +104,13 @@ export function createApp(store: Store, config: Config) {
           maxAge: 30 * 86400000,
           path: "/",
         })
-        .json({ ok: true });
+        .json({ ok: true, account });
     },
   );
-  const requireAuth = auth(store, config.mcpToken);
+  const requireAuth = auth(store, config.mcpToken, config.mcpTokenHash);
   app.use("/api", requireAuth);
   app.use("/mcp", requireAuth);
-  app.get("/api/session", (_req, res) => res.json({ account: "owner" }));
+  app.get("/api/session", (_req, res) => res.json({ account }));
   app.post("/api/logout", (req, res) => {
     if (req.cookies.memory_session)
       store.db
@@ -140,6 +165,13 @@ export function createApp(store: Store, config: Config) {
   app.get("/api/push/config", (_req, res) =>
     res.json({ publicKey: config.vapidPublicKey ?? null }),
   );
+  app.post("/api/push/unsubscribe", (req, res) => {
+    const { endpoint } = z
+      .object({ endpoint: z.string().max(2048) })
+      .parse(req.body);
+    store.db.prepare("DELETE FROM subscriptions WHERE id=?").run(sha(endpoint));
+    res.json({ ok: true });
+  });
   app.post("/api/push/subscribe", (req, res) => {
     const sub = z
       .object({
@@ -209,11 +241,9 @@ export function createApp(store: Store, config: Config) {
         "Request rejected:",
         error instanceof Error ? error.message : "unknown error",
       );
-      res
-        .status(400)
-        .json({
-          error: error instanceof Error ? error.message : "Verzoek mislukt.",
-        });
+      res.status(400).json({
+        error: error instanceof Error ? error.message : "Verzoek mislukt.",
+      });
     },
   );
   return app;

@@ -68,6 +68,7 @@ export function App() {
   const [mobile, setMobile] = useState(false);
   const [settings, setSettings] = useState(false);
   const [login, setLogin] = useState(false);
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -95,6 +96,20 @@ export function App() {
     return unsub;
   }, []);
   const s = store.snapshot;
+  useEffect(() => {
+    setSelected(null);
+    setView("inbox");
+    setQuery("");
+    setQuick("");
+    setDestination("");
+    setDue("");
+    setActive(null);
+    setNewDialog(false);
+    setTitle("");
+    setSettings(false);
+    setError("");
+    setNotice("");
+  }, [s.account?.id]);
   const entities = s.entities;
   const alive = entities.filter((e) => !e.deleted);
   const notes = alive
@@ -212,17 +227,38 @@ export function App() {
     save([created]);
     setFocus(created.id);
   };
+  async function releaseNotifications() {
+    if (!("serviceWorker" in navigator)) return;
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration?.pushManager) return;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    await store.accountFetch("/api/push/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: subscription.endpoint }),
+    });
+    await subscription.unsubscribe();
+  }
   async function doLogin(event: FormEvent) {
     event.preventDefault();
     setError("");
     try {
+      const differentAccount =
+        s.account && username.trim().toLowerCase() !== s.account.username;
+      if (differentAccount && (s.pending.length || s.conflicts.length))
+        throw new Error(
+          "Synchroniseer of exporteer eerst je lokale wijzigingen voordat je een ander account opent.",
+        );
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
-      await store.setAuthenticated(true);
+      const { account } = await res.json();
+      if (differentAccount) await releaseNotifications();
+      await store.setAuthenticated(true, account);
       setPassword("");
       setLogin(false);
     } catch (e) {
@@ -276,7 +312,9 @@ export function App() {
         throw new Error(
           "Webpush is niet beschikbaar in deze browser. Installeer de webapp op het iPhone-beginscherm.",
         );
-      const config = await fetch("/api/push/config").then((r) => r.json());
+      const config = await store
+        .accountFetch("/api/push/config")
+        .then((r) => r.json());
       if (!config.publicKey)
         throw new Error(
           "De serverplanner wordt geactiveerd bij HTTPS-hosting.",
@@ -293,7 +331,7 @@ export function App() {
         userVisibleOnly: true,
         applicationServerKey: key,
       });
-      const res = await fetch("/api/push/subscribe", {
+      const res = await store.accountFetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sub.toJSON()),
@@ -335,8 +373,16 @@ export function App() {
       return;
     }
     try {
-      await fetch("/api/logout", { method: "POST" });
+      await releaseNotifications();
+      const response = await store.accountFetch("/api/logout", {
+        method: "POST",
+      });
+      if (!response.ok)
+        throw new Error("Log opnieuw in bij dit account om uit te loggen.");
       await store.clearLocal();
+      setUsername("");
+      setPassword("");
+      setLogin(false);
       setSettings(false);
     } catch (e) {
       report((e as Error).message);
@@ -368,9 +414,22 @@ export function App() {
           </p>
           <form onSubmit={doLogin}>
             <label>
-              Je wachtwoord
+              Gebruikersnaam
               <input
                 autoFocus
+                aria-label="Gebruikersnaam"
+                type="text"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Je wachtwoord
+              <input
                 aria-label="Wachtwoord"
                 type="password"
                 autoComplete="current-password"
@@ -411,7 +470,7 @@ export function App() {
       </main>
     );
   return (
-    <div className="app">
+    <div key={s.account?.id ?? "guest"} className="app">
       {mobile && (
         <div className="sidebar-scrim" onClick={() => setMobile(false)} />
       )}
@@ -524,9 +583,12 @@ export function App() {
             <Plus size={17} /> Nieuwe notitie
           </button>
           <button className="account" onClick={() => setSettings(true)}>
-            <span className="avatar">A</span>
+            <span className="avatar">
+              {(s.account?.username ?? "A").slice(0, 1).toUpperCase()}
+            </span>
             <span>
-              Mijn geheugen<small>Persoonlijke werkruimte</small>
+              {s.account?.username ?? "Mijn geheugen"}
+              <small>Persoonlijke werkruimte</small>
             </span>
             <Settings size={17} />
           </button>
@@ -1360,6 +1422,7 @@ export function App() {
             <button
               className="settings-action"
               onClick={() => {
+                setUsername(s.account?.username ?? "");
                 setLogin(true);
                 setSettings(false);
               }}
@@ -1387,7 +1450,10 @@ export function App() {
                     "Wis alle lokale gegevens op dit apparaat, inclusief niet-gesynchroniseerde wijzigingen? Exporteer ze eerst als je ze wilt bewaren.",
                   )
                 )
-                  void fetch("/api/logout", { method: "POST" })
+                  void releaseNotifications()
+                    .then(() =>
+                      store.accountFetch("/api/logout", { method: "POST" }),
+                    )
                     .finally(() => store.clearLocal())
                     .then(() => setSettings(false));
               }}

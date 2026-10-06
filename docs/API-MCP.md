@@ -1,12 +1,12 @@
 # API en MCP
 
-Alle routes gebruiken dezelfde SQLite-store. Lees-/wijzigtoegang is alleen voor de eigenaar. Browser: login met het ingestelde wachtwoord. Externe clients: `Authorization: Bearer <MCP_TOKEN>`. Bewaar tokens buiten Git.
+Alle routes gebruiken dezelfde SQLite-store. Ieder account ziet uitsluitend zijn eigen privégegevens. Browser: login met gebruikersnaam en wachtwoord. Voor geauthenticeerde API-verzoeken stuurt de browser `X-Memory-Account` met het account-ID uit de login of sessie; dit voorkomt dat een andere browsertab wijzigingen naar een gewisseld account stuurt. Externe clients: `Authorization: Bearer <MCP_TOKEN>`. Bewaar tokens buiten Git.
 
 ## HTTP
 
 - `GET /api/health`: bereikbaarheid, geen privégegevens.
-- `POST /api/login`: `{ "password": "..." }`, sessiecookie, exact passende Origin.
-- `GET /api/session`, `POST /api/logout`.
+- `POST /api/login`: `{ "username": "...", "password": "..." }`, sessiecookie en `{ account: { id, username } }`, exact passende Origin.
+- `GET /api/session`: `{ account: { id, username } }`; `POST /api/logout`.
 - `GET /api/entities`: alle entiteiten, inclusief archief en tombstones.
 - `POST /api/sync`: `{ "mutations": [{ "opId": "UUID", "baseVersion": 0, "entity": { ... } }] }`. Lege array haalt alleen actuele serverinhoud op. Maximaal 100 operaties per batch. Antwoord: `{ results, entities }`. `results` bevat per operatie `status: ok` met de opgeslagen entiteit, of `status: conflict` met de serverversie. Gebruik per nieuw verzoek een nieuw operatie-ID; bij retry van dezelfde operatie exact hetzelfde ID en body.
 - `PUT /api/images/:id`: binaire afbeelding; `Content-Type: image/png|image/jpeg|image/webp|image/gif`; maximaal 10 MB. Upload vóór het refereren vanuit een blok. Zelfde ID en bytes is een veilige retry.
@@ -17,7 +17,7 @@ Nieuwe entiteiten krijgen `version: 0`, `deleted: false`, ISO `updatedAt` en een
 
 ## MCP aansluiten
 
-Gepland endpoint: `https://memory.pansier.nl/mcp`. Dit is beschikbaar nadat de VPS, DNS en HTTPS zijn ingesteld. Configureer een HTTP-MCP-client met een Authorization-header. Bijvoorbeeld in Codex-configuratie, nadat de VPS draait:
+Productie-endpoint: `https://memory.pansier.nl/mcp`. VPS, DNS en HTTPS zijn ingericht. Elk token is gekoppeld aan één account en geeft uitsluitend toegang tot diens gegevens. Configureer een HTTP-MCP-client met een Authorization-header. Bijvoorbeeld in Codex-configuratie, nadat de VPS draait:
 
 ```toml
 [mcp_servers.my_memory]

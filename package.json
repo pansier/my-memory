@@ -19,7 +19,8 @@
     "vapid": "node --import tsx scripts/vapid.ts",
     "backup": "node --env-file-if-exists=.env --import tsx scripts/backup.ts",
     "preview": "node scripts/dev.mjs --preview",
-    "test:container": "node --import tsx scripts/container-smoke.ts"
+    "test:container": "node --import tsx scripts/container-smoke.ts",
+    "account": "node --env-file-if-exists=.env --import tsx scripts/account.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
