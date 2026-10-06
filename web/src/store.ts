@@ -178,7 +178,13 @@ export async function change(
       ? entities(s)
       : entities) {
       const current = s.entities.find((e) => e.id === entity.id);
-      const updated = { ...entity, updatedAt: now() };
+      // React events can carry a version from before the latest sync response.
+      // Keep the acknowledged revision under the write lock; only content changes.
+      const updated = {
+        ...entity,
+        version: current?.version ?? entity.version,
+        updatedAt: now(),
+      };
       s.entities = s.entities.filter((e) => e.id !== entity.id).concat(updated);
       const conflict = s.conflicts.find((c) => c.id === entity.id);
       if (conflict) {

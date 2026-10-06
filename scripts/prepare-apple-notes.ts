@@ -12,6 +12,7 @@ import {
   newNote,
   newFolder,
   newBlock,
+  text,
   entitySchema,
   type Entity,
   type Block,
@@ -77,7 +78,9 @@ for (const source of sources) {
   let title = basename(source.path, ".md");
   if (tokens[0]?.type === "heading") {
     const first = tokens[0] as Tokens.Heading;
-    title = first.text.replace(/\*\*|__/g, "");
+    title = text(cleanHtml(marked.parseInline(first.text) as string))
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;|&apos;/g, "'");
     if (first.depth === 1)
       tokens = tokens.slice(1) as ReturnType<typeof marked.lexer>;
   }

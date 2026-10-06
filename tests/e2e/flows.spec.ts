@@ -915,9 +915,16 @@ test("mobile touch handle reorders while the other points make room", async ({
 
 test("document paragraphs, native lists and mixed reusable checklists can be authored and retained", async ({
   page,
-}) => {
+}, testInfo) => {
+  const title = `Doorlopende tekstpagina ${testInfo.repeatEachIndex}`;
   await login(page);
-  await createNote(page, "Doorlopende tekstpagina", false, true);
+  // Exercise edits while earlier writes are being acknowledged, as on the VPS.
+  await page.route("**/api/sync", async (route) => {
+    const response = await route.fetch();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await route.fulfill({ response });
+  });
+  await createNote(page, title, false, true);
   const editor = page.getByRole("textbox", { name: "Inhoud van punt" }).first();
   await editor.fill("Eerste alinea.");
   await editor.press("End");
@@ -955,9 +962,7 @@ test("document paragraphs, native lists and mixed reusable checklists can be aut
   await expect(task).not.toHaveClass(/is-done/);
   await synced(page);
   await page.reload();
-  await page
-    .getByRole("button", { name: "Doorlopende tekstpagina", exact: true })
-    .click();
+  await page.getByRole("button", { name: title, exact: true }).click();
   await expect(page.locator(".prose-document .ProseMirror h2")).toHaveText(
     "Tweede alinea.",
   );
@@ -974,6 +979,7 @@ test("document paragraphs, native lists and mixed reusable checklists can be aut
   await expect(
     page.locator(".kind-task").filter({ hasText: "Camera meenemen" }),
   ).toHaveCount(0);
+  await page.unrouteAll({ behavior: "wait" });
 });
 
 test("all folder notes are reachable, and only explicitly scheduled points are reminders", async ({
