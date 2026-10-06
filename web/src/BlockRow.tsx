@@ -19,6 +19,7 @@ import {
   text,
 } from "../../shared/model";
 import { change, cacheImage, imageBlob, addImage } from "./store";
+import type { DragHandle } from "./SortableBlocks";
 export function localDate(value: string | null) {
   if (!value) return "";
   const d = new Date(value);
@@ -103,8 +104,10 @@ export function BlockRow({
   onFocus,
   onEnter,
   onError,
+  dragHandle,
 }: {
   block: Block;
+  dragHandle?: DragHandle;
   notes: Note[];
   entities: Entity[];
   focus?: boolean;
@@ -222,9 +225,16 @@ export function BlockRow({
       className={`block-row kind-${block.kind} ${block.done ? "is-done" : ""}`}
       style={{ marginLeft: block.indent * 20 }}
     >
-      <span className="row-handle">
-        <GripVertical size={14} />
-      </span>
+      {dragHandle && (
+        <button
+          {...dragHandle}
+          className="row-handle"
+          aria-label="Punt verplaatsen"
+          title="Sleep om te verplaatsen"
+        >
+          <GripVertical size={16} />
+        </button>
+      )}
       {block.kind === "task" ? (
         <button
           className="checkbox"

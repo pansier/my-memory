@@ -42,12 +42,14 @@ import {
   newNote,
   newBlock,
   blocksOf,
+  repositionBlock,
   archived,
   cloneNote,
   base,
   text,
 } from "../../shared/model";
 import { Imports } from "./Imports";
+import { SortableBlocks } from "./SortableBlocks";
 import * as store from "./store";
 import { BlockRow, localDate } from "./BlockRow";
 const nav = [
@@ -1454,28 +1456,53 @@ export function App() {
                       </label>
                     </div>
                   )}
-                  {rows.slice(0, rowLimit).map((b) => (
-                    <div key={b.id} className="point-container">
-                      {!note && b.noteId && (
-                        <button
-                          className="point-source"
-                          onClick={() => go("notes", b.noteId)}
-                        >
-                          <NotebookPen size={12} />
-                          {notes.find((n) => n.id === b.noteId)?.title}
-                        </button>
-                      )}
-                      <BlockRow
-                        block={b}
-                        entities={entities}
-                        notes={notes}
-                        focus={focusId === b.id}
-                        onFocus={(editor, b) => setActive({ editor, id: b.id })}
-                        onEnter={enter}
-                        onError={report}
-                      />
-                    </div>
-                  ))}
+                  <SortableBlocks
+                    key={`${s.account?.id}:${view}:${selected}`}
+                    blocks={rows.slice(0, rowLimit)}
+                    enabled={!!note || view === "inbox"}
+                    onError={report}
+                    onMove={(id, overId) =>
+                      store.change((state) => {
+                        const block = state.entities.find(
+                          (e): e is Block =>
+                            e.type === "block" && e.id === id && !e.deleted,
+                        );
+                        return block
+                          ? repositionBlock(
+                              blocksOf(state.entities, block.noteId),
+                              id,
+                              overId,
+                            )
+                          : [];
+                      })
+                    }
+                  >
+                    {(b, dragHandle) => (
+                      <>
+                        {!note && b.noteId && (
+                          <button
+                            className="point-source"
+                            onClick={() => go("notes", b.noteId)}
+                          >
+                            <NotebookPen size={12} />
+                            {notes.find((n) => n.id === b.noteId)?.title}
+                          </button>
+                        )}
+                        <BlockRow
+                          block={b}
+                          dragHandle={dragHandle}
+                          entities={entities}
+                          notes={notes}
+                          focus={focusId === b.id}
+                          onFocus={(editor, b) =>
+                            setActive({ editor, id: b.id })
+                          }
+                          onEnter={enter}
+                          onError={report}
+                        />
+                      </>
+                    )}
+                  </SortableBlocks>
                   {rows.length > rowLimit && (
                     <button
                       className="settings-action"

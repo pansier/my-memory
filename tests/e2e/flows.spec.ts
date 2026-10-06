@@ -717,3 +717,187 @@ test("mobile settings close without leaving a scrim or tinting the status area",
   await page.locator(".sidebar-scrim").click({ position: { x: 350, y: 10 } });
   await expect(page.locator(".sidebar-scrim, .sidebar.open")).toHaveCount(0);
 });
+
+test("dragging makes room before drop, persists offline and supports keyboard cancellation", async ({
+  page,
+  context,
+}) => {
+  await login(page);
+  await createNote(page, "Sorteer mijn paklijst", true);
+  await quick(page, "Alpha");
+  await quick(
+    page,
+    "Beta met meerdere woorden zodat deze regel een andere hoogte heeft",
+  );
+  await quick(page, "Gamma");
+  await synced(page);
+  const row = (name: string) =>
+    page.locator(".sortable-point").filter({
+      has: page
+        .getByRole("textbox", { name: "Inhoud van punt" })
+        .filter({ hasText: name }),
+    });
+  const alpha = row("Alpha"),
+    beta = row("Beta"),
+    gamma = row("Gamma");
+  const handle = alpha.getByRole("button", { name: "Punt verplaatsen" });
+  await handle.hover();
+  const start = (await handle.boundingBox())!;
+  const end = (await gamma.boundingBox())!;
+  const betaBefore = (await beta.boundingBox())!.y;
+  await context.setOffline(true);
+  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(start.x + start.width / 2, end.y + end.height / 2, {
+    steps: 15,
+  });
+  await expect(page.locator(".drag-preview")).toContainText("Alpha");
+  await expect
+    .poll(async () => (await beta.boundingBox())!.y)
+    .toBeLessThan(betaBefore - 20);
+  await page.screenshot({ path: "/private/tmp/my-memory-drag-preview.png" });
+  await page.mouse.up();
+  const order = () =>
+    page
+      .getByRole("textbox", { name: "Inhoud van punt" })
+      .allTextContents()
+      .then((items) => items.map((x) => x.trim()).filter(Boolean));
+  const sorted = [
+    "Beta met meerdere woorden zodat deze regel een andere hoogte heeft",
+    "Gamma",
+    "Alpha",
+  ];
+  await expect.poll(order).toEqual(sorted);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Sorteer mijn paklijst", exact: true })
+    .click();
+  await expect.poll(order).toEqual(sorted);
+  await context.setOffline(false);
+  await synced(page);
+  await row("Alpha").getByRole("button", { name: "Punt verplaatsen" }).focus();
+  await page.keyboard.press("Space");
+  await expect(page.locator(".sortable-point.is-dragging")).toHaveCount(1);
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await page.keyboard.press("ArrowUp");
+  await expect
+    .poll(async () =>
+      row("Gamma").evaluate(
+        (el) => new DOMMatrix(getComputedStyle(el).transform).m42,
+      ),
+    )
+    .toBeGreaterThan(20);
+  await expect(page.locator(".drag-preview")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".drag-preview")).toHaveCount(0);
+  await expect.poll(order).toEqual(sorted);
+  await expect
+    .poll(() =>
+      row("Gamma").evaluate(
+        (el) => new DOMMatrix(getComputedStyle(el).transform).m42,
+      ),
+    )
+    .toBe(0);
+  await row("Alpha").getByRole("button", { name: "Punt verplaatsen" }).focus();
+  await page.keyboard.press("Space");
+  await expect(page.locator(".sortable-point.is-dragging")).toHaveCount(1);
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await page.keyboard.press("ArrowUp");
+  await expect
+    .poll(async () =>
+      row("Gamma").evaluate(
+        (el) => new DOMMatrix(getComputedStyle(el).transform).m42,
+      ),
+    )
+    .toBeGreaterThan(20);
+  await expect(
+    page.getByText("Nieuwe plek: 3 van 4.", { exact: true }),
+  ).toHaveCount(1);
+  await page.keyboard.press("Space");
+  await expect.poll(order).toEqual([sorted[0], "Alpha", "Gamma"]);
+  await synced(page);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Sorteer mijn paklijst", exact: true })
+    .click();
+  await expect.poll(order).toEqual([sorted[0], "Alpha", "Gamma"]);
+});
+
+test("mobile touch handle reorders while the other points make room", async ({
+  page,
+  context,
+}) => {
+  await login(page);
+  await createNote(page, "Touch paklijst", true);
+  await quick(page, "Touch Alpha");
+  await quick(page, "Touch Beta");
+  await quick(page, "Touch Gamma");
+  await synced(page);
+  await page.setViewportSize({ width: 393, height: 852 });
+  await expect
+    .poll(() =>
+      page
+        .locator(".sidebar")
+        .evaluate((el) => el.getBoundingClientRect().right),
+    )
+    .toBeLessThanOrEqual(0);
+  const row = (name: string) =>
+    page.locator(".sortable-point").filter({
+      has: page
+        .getByRole("textbox", { name: "Inhoud van punt" })
+        .filter({ hasText: name }),
+    });
+  const handle = row("Touch Gamma").getByRole("button", {
+    name: "Punt verplaatsen",
+  });
+  await handle.scrollIntoViewIfNeeded();
+  await expect(handle).toBeVisible();
+  const start = (await handle.boundingBox())!,
+    target = (await row("Touch Alpha").boundingBox())!;
+  const betaBefore = (await row("Touch Beta").boundingBox())!.y;
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Emulation.setTouchEmulationEnabled", {
+    enabled: true,
+    maxTouchPoints: 1,
+  });
+  const x = start.x + start.width / 2,
+    y = start.y + start.height / 2;
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x, y }],
+  });
+  for (let step = 1; step <= 12; step++)
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [
+        { x, y: y + ((target.y + target.height / 2 - y) * step) / 12 },
+      ],
+    });
+  await expect(page.locator(".drag-preview")).toContainText("Touch Gamma");
+  await expect
+    .poll(async () => (await row("Touch Beta").boundingBox())!.y)
+    .toBeGreaterThan(betaBefore + 20);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  const order = () =>
+    page
+      .getByRole("textbox", { name: "Inhoud van punt" })
+      .allTextContents()
+      .then((items) => items.map((x) => x.trim()).filter(Boolean));
+  await expect
+    .poll(order)
+    .toEqual(["Touch Gamma", "Touch Alpha", "Touch Beta"]);
+  await synced(page);
+});

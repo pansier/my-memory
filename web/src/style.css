@@ -561,13 +561,22 @@ nav {
   min-width: 0;
 }
 .row-handle {
+  touch-action: none;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 30px;
+  padding: 0;
   position: absolute;
-  left: -19px;
-  top: 16px;
+  left: -25px;
+  top: 9px;
   color: #a9b39f;
   opacity: 0;
 }
-.block-row:hover .row-handle {
+.block-row:hover .row-handle,
+.row-handle:focus-visible {
   opacity: 1;
 }
 .checkbox {
@@ -1404,7 +1413,12 @@ nav {
     padding: 12px 0;
   }
   .row-handle {
-    display: none;
+    position: static;
+    opacity: 1;
+    flex-shrink: 0;
+    width: 28px;
+    height: 32px;
+    margin-top: -5px;
   }
   .ProseMirror {
     font-size: 16px;
@@ -1601,4 +1615,40 @@ nav {
 }
 .sidebar-content .folder-nav {
   flex-shrink: 0;
+}
+
+.sortable-point.is-dragging {
+  background: #e8eee2;
+  outline: 1px dashed #9bab8e;
+  border-radius: 6px;
+}
+.sortable-point.is-dragging > * {
+  opacity: 0;
+  pointer-events: none;
+}
+.row-handle:active {
+  cursor: grabbing;
+}
+.drag-preview {
+  background: var(--page-background);
+  border: 1px solid #b5c4a7;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px #28372230;
+  padding: 13px 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  overflow: hidden;
+  cursor: grabbing;
+  font-size: 18px;
+  line-height: 1.7;
+}
+.drag-preview-text {
+  flex: 1;
+  min-width: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sortable-point {
+    transition: none !important;
+  }
 }

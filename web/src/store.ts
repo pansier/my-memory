@@ -170,9 +170,13 @@ export async function setAuthenticated(value: boolean, account?: Account) {
   });
   if (value) void sync();
 }
-export async function change(entities: Entity[]) {
+export async function change(
+  entities: Entity[] | ((state: Snapshot) => Entity[]),
+) {
   await write((s) => {
-    for (const entity of entities) {
+    for (const entity of typeof entities === "function"
+      ? entities(s)
+      : entities) {
       const current = s.entities.find((e) => e.id === entity.id);
       const updated = { ...entity, updatedAt: now() };
       s.entities = s.entities.filter((e) => e.id !== entity.id).concat(updated);

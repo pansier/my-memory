@@ -206,3 +206,44 @@ export function insertUnderHeading(
     },
   };
 }
+
+/** Move one point within its list, preserving all content and hidden points. */
+export function repositionBlock(
+  blocks: Block[],
+  id: string,
+  overId: string,
+): Block[] {
+  const ordered = [...blocks].sort(
+    (a, b) => a.position - b.position || a.id.localeCompare(b.id),
+  );
+  const from = ordered.findIndex((b) => b.id === id);
+  const to = ordered.findIndex((b) => b.id === overId);
+  if (
+    from < 0 ||
+    to < 0 ||
+    from === to ||
+    ordered[from].noteId !== ordered[to].noteId
+  )
+    return [];
+  const [moved] = ordered.splice(from, 1);
+  ordered.splice(to, 0, moved);
+  const before = ordered[to - 1]?.position;
+  const after = ordered[to + 1]?.position;
+  const position =
+    before === undefined
+      ? after! - 1000
+      : after === undefined
+        ? before + 1000
+        : before + (after - before) / 2;
+  if (
+    Number.isFinite(position) &&
+    (before === undefined || position > before) &&
+    (after === undefined || position < after)
+  )
+    return [{ ...moved, position }];
+  // Equal ranks or exhausted floating-point gaps need a stable renumbering.
+  return ordered.map((block, index) => ({
+    ...block,
+    position: (index + 1) * 1000,
+  }));
+}

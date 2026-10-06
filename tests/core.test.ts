@@ -256,3 +256,47 @@ test("consistent SQLite backup restores notes, images and idempotent operations"
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("reordering preserves hidden points, content and schedules, and handles equal ranks", async () => {
+  const { repositionBlock } = await import("../shared/model.ts");
+  const note = newNote("Paklijst", true);
+  const a = {
+    ...newBlock(note.id, "<p><strong>Alpha</strong></p>"),
+    position: 1000,
+    indent: 2,
+    done: true,
+    dueAt: "2026-12-01T09:00:00Z",
+  };
+  const hidden = {
+    ...newBlock(note.id, "<p>Archief</p>"),
+    position: 2000,
+    done: true,
+    reusable: false,
+  };
+  const b = { ...newBlock(note.id, "<p>Beta</p>"), position: 3000 };
+  const c = { ...newBlock(note.id, "<p>Gamma</p>"), position: 4000 };
+  const blocks = [a, hidden, b, c];
+  const changes = repositionBlock(blocks, a.id, c.id);
+  assert.equal(changes.length, 1);
+  assert.deepEqual({ ...changes[0], position: a.position }, a);
+  const reordered = blocksOf(
+    blocks.map((x) => changes.find((y) => x.id === y.id) ?? x),
+    note.id,
+  );
+  assert.deepEqual(
+    reordered.map((x) => x.id),
+    [hidden.id, b.id, c.id, a.id],
+  );
+  const up = repositionBlock(reordered, a.id, hidden.id);
+  assert.ok(up[0].position < hidden.position);
+  assert.deepEqual(repositionBlock(blocks, a.id, a.id), []);
+  assert.deepEqual(repositionBlock(blocks, a.id, "missing"), []);
+  const tied = [a, b, c].map((x) => ({ ...x, position: 1000 }));
+  const order = blocksOf(tied, note.id);
+  const normalized = repositionBlock(order, order[0].id, order[1].id);
+  assert.deepEqual(
+    blocksOf(normalized, note.id).map((x) => x.id),
+    [order[1].id, order[0].id, order[2].id],
+  );
+  assert.equal(new Set(normalized.map((x) => x.position)).size, 3);
+});
