@@ -23,6 +23,7 @@
     "account": "node --env-file-if-exists=.env --import tsx scripts/account.ts"
   },
   "dependencies": {
+    "@floating-ui/dom": "^1.8.0",
     "@js-temporal/polyfill": "^0.5.1",
     "@modelcontextprotocol/sdk": "^1.20.0",
     "@tiptap/extension-placeholder": "^3.6.0",
