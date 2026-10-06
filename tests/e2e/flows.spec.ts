@@ -478,3 +478,82 @@ test("switching account updates other tabs without mixing private data", async (
   await expect(page.getByText(otherText, { exact: true })).toBeVisible();
   await other.close();
 });
+
+test("push permission is requested directly from the tap before waiting for server config", async ({
+  page,
+}) => {
+  await login(page);
+  await page.evaluate(() => {
+    Object.defineProperty(Notification, "permission", {
+      configurable: true,
+      value: "default",
+    });
+    Object.defineProperty(Notification, "requestPermission", {
+      configurable: true,
+      value: () => {
+        document.documentElement.dataset.pushPermission = navigator
+          .userActivation.isActive
+          ? "active"
+          : "expired";
+        return Promise.resolve("granted");
+      },
+    });
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/push/config", async (route) => {
+    await gate;
+    await route.fulfill({ json: { publicKey: null } });
+  });
+  await page.locator(".account").click();
+  await page
+    .getByRole("button", { name: /Herinneringsmeldingen inschakelen/ })
+    .click();
+  try {
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-push-permission",
+      "active",
+    );
+  } finally {
+    release();
+  }
+  await expect(
+    page.getByText("De serverplanner wordt geactiveerd bij HTTPS-hosting.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+});
+
+test("blocked push permission explains how to enable notifications without another prompt", async ({
+  page,
+}) => {
+  await login(page);
+  await page.evaluate(() => {
+    Object.defineProperty(Notification, "permission", {
+      configurable: true,
+      value: "denied",
+    });
+    Object.defineProperty(Notification, "requestPermission", {
+      configurable: true,
+      value: () => {
+        document.documentElement.dataset.unexpectedPushPrompt = "true";
+        return Promise.resolve("denied");
+      },
+    });
+  });
+  await page.locator(".account").click();
+  await page
+    .getByRole("button", { name: /Herinneringsmeldingen inschakelen/ })
+    .click();
+  await expect(
+    page.getByText(
+      "Meldingen zijn geblokkeerd. Zet ze aan in de instellingen van je iPhone of browser voor My Memory en probeer opnieuw.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator("html")).not.toHaveAttribute(
+    "data-unexpected-push-prompt",
+  );
+});

@@ -312,6 +312,17 @@ export function App() {
         throw new Error(
           "Webpush is niet beschikbaar in deze browser. Installeer de webapp op het iPhone-beginscherm.",
         );
+      if (Notification.permission === "denied")
+        throw new Error(
+          "Meldingen zijn geblokkeerd. Zet ze aan in de instellingen van je iPhone of browser voor My Memory en probeer opnieuw.",
+        );
+      // Ask directly from the tap, before network waits can expire user activation.
+      const permission =
+        Notification.permission === "granted"
+          ? "granted"
+          : await Notification.requestPermission();
+      if (permission !== "granted")
+        throw new Error("Sta meldingen toe om herinneringen te ontvangen.");
       const config = await store
         .accountFetch("/api/push/config")
         .then((r) => r.json());
@@ -319,8 +330,6 @@ export function App() {
         throw new Error(
           "De serverplanner wordt geactiveerd bij HTTPS-hosting.",
         );
-      if ((await Notification.requestPermission()) !== "granted")
-        throw new Error("Sta meldingen toe om herinneringen te ontvangen.");
       const registration = await navigator.serviceWorker.ready;
       const base64 = config.publicKey.replaceAll("-", "+").replaceAll("_", "/");
       const key = Uint8Array.from(
@@ -1416,7 +1425,7 @@ export function App() {
               <Bell size={18} />
               <span>
                 Herinneringsmeldingen inschakelen
-                <small>Vereist HTTPS, internet en toestemming.</small>
+                <small>Tik om toestemming te geven voor meldingen.</small>
               </span>
             </button>
             <button
