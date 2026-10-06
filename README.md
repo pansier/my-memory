@@ -52,4 +52,4 @@ Voor een andere omgeving: `npx playwright install --with-deps chromium` en stel 
 - [VPS-deploy, back-up, herstel en beheer](docs/VPS.md)
 - [Voortgang en bewijs per bouwstap](docs/VOORTGANG.md)
 
-De code is geschikt om later vanuit deze GitHub-repository naar een VPS te deployen. Docker Compose en Caddy zijn voorbereid. Een daadwerkelijke VPS-deploy, publiek HTTPS-adres, pushontvangst op echte iPhone/Mac en de accountkoppeling in ChatGPT/Codex blijven deploymentcontroles. Productie wordt pas op expliciete opdracht geactiveerd.
+De code is geschikt om vanuit deze GitHub-repository naar een VPS te deployen. Docker Compose en Caddy zijn voorbereid. Het voorlopige productieadres is `https://memory.pansier.nl`; de VPS bij TransIP en DNS moeten nog worden ingesteld. Een daadwerkelijke VPS-deploy, publiek HTTPS-adres, pushontvangst op echte iPhone/Mac en de accountkoppeling in ChatGPT/Codex blijven deploymentcontroles.

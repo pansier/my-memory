@@ -1,13 +1,13 @@
 # Later deployen vanuit GitHub
 
-Deze configuratie staat klaar voor een Linux-VPS met Docker Compose. Er is tijdens het bouwen geen VPS gedeployed. De concrete domeinnaam, VPS-toegang en productiegeheimen zijn nog niet ingevuld.
+Deze configuratie staat klaar voor een Linux-VPS met Docker Compose. Het voorlopige productieadres is `https://memory.pansier.nl`. De VPS moet nog bij TransIP worden aangemaakt; VPS-toegang, DNS en productiegeheimen zijn nog niet ingesteld. De app is nog niet online op dit adres.
 
 ## Voorbereiding
 
-1. Richt een VPS in met Docker en Compose. Stel DNS voor `memory.jouwdomein.nl` in op die VPS. Open TCP 80/443 en eventueel UDP 443. Publiceer poort 3001 niet; alleen Caddy bereikt de API via het Compose-netwerk.
+1. Richt een VPS in met Docker en Compose. Maak bij TransIP voor `pansier.nl` een A-record met naam `memory` naar het IPv4-adres van de nieuwe VPS. Voeg alleen een AAAA-record toe als de VPS ook via IPv6 bereikbaar is. Dit geeft `memory.pansier.nl` een eigen bestemming; de bestaande website op `pansier.nl` behoudt zijn DNS-records. Open TCP 80/443 en eventueel UDP 443. Publiceer poort 3001 niet; alleen Caddy bereikt de API via het Compose-netwerk.
 2. Clone `https://github.com/pansier/my-memory.git` en kies de gecontroleerde commit/tag. Kopieer `.env.example` naar `.env` met bestandsrechten `600`.
 3. Maak met `npm run password` een scrypt-hash (Node 24 nodig), of voer het script uit in een Node 24-container. Kies minimaal 12 tekens. Stel APP_PASSWORD_HASH in; bewaar het plaintext wachtwoord veilig buiten Git.
-4. Maak MCP_TOKEN van minimaal 32 willekeurige tekens. Stel `NODE_ENV=production`, `MEMORY_DOMAIN=memory.jouwdomein.nl` en `APP_ORIGIN=https://memory.jouwdomein.nl` in.
+4. Maak MCP_TOKEN van minimaal 32 willekeurige tekens. Stel `NODE_ENV=production`, `MEMORY_DOMAIN=memory.pansier.nl` en `APP_ORIGIN=https://memory.pansier.nl` in.
 5. Maak VAPID-sleutels met `npm run vapid`. Stel VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY en `VAPID_SUBJECT=mailto:...` in. Deze sleutels blijven stabiel bij updates; commit geen .env.
 
 ## Bouwen en starten
@@ -20,7 +20,7 @@ docker compose up -d
 
 Caddy vraagt automatisch een HTTPS-certificaat aan. De Node-server weigert productiestart zonder HTTPS-origin en een lang MCP-token. Gebruik deze productieomgeving nooit via rechtstreeks HTTP; de Secure-cookie vereist HTTPS.
 
-Controleer `https://memory.jouwdomein.nl/api/health`, log in, maak een testnotitie en heropen de app. Stel in ChatGPT/Codex de remote MCP-URL en bearer-toegang in. Lees eerst actuele inhoud en voer daarna een gerichte toevoeging uit. Controleer dat bronopmaak behouden blijft. Zie [API-MCP](API-MCP.md) voor het protocol en de beperking rond accountondersteuning voor bearer-auth.
+Controleer `https://memory.pansier.nl/api/health`, log in, maak een testnotitie en heropen de app. Stel in ChatGPT/Codex de remote MCP-URL en bearer-toegang in. Lees eerst actuele inhoud en voer daarna een gerichte toevoeging uit. Controleer dat bronopmaak behouden blijft. Zie [API-MCP](API-MCP.md) voor het protocol en de beperking rond accountondersteuning voor bearer-auth.
 
 Op iPhone/iOS 16.4+ vereist webpush een geïnstalleerde webapp op het beginscherm. Alex maakt die snelkoppeling en de Mac-Dock-snelkoppeling zelf. Schakel daarna meldingen in via instellingen en geef toestemming. Plan een herinnering, sluit de app en controleer ontvangst met internet; herplan/vink af en controleer dat de oude melding niet verschijnt. Doe dit op de echte iPhone en Mac. Browseremulatie bewijst deze ontvangst niet.
 

@@ -17,11 +17,11 @@ Nieuwe entiteiten krijgen `version: 0`, `deleted: false`, ISO `updatedAt` en een
 
 ## MCP aansluiten
 
-URL: `https://memory.jouwdomein.nl/mcp`. Configureer een HTTP-MCP-client met een Authorization-header. Bijvoorbeeld in Codex-configuratie, nadat de VPS draait:
+Gepland endpoint: `https://memory.pansier.nl/mcp`. Dit is beschikbaar nadat de VPS, DNS en HTTPS zijn ingesteld. Configureer een HTTP-MCP-client met een Authorization-header. Bijvoorbeeld in Codex-configuratie, nadat de VPS draait:
 
 ```toml
 [mcp_servers.my_memory]
-url = "https://memory.jouwdomein.nl/mcp"
+url = "https://memory.pansier.nl/mcp"
 bearer_token_env_var = "MY_MEMORY_MCP_TOKEN"
 ```
 

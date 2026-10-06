@@ -38,4 +38,4 @@ De planner gebruikt in de automatische tests een vervangende sender: er worden g
 
 ## Nog te doen bij deployment
 
-Domein/VPS instellen, productiegeheimen invullen, HTTPS activeren, de MCP-server vanuit het echte ChatGPT/Codex-account verbinden en webpush op de echte iPhone/Mac met gesloten app controleren. Alex voegt de snelkoppelingen zelf toe. Stap 19/20 en de externe controles voor 14/17 zijn daarom niet volledig afgerond; GitHub-issues zijn niet automatisch gesloten.
+Het voorlopige productieadres is `https://memory.pansier.nl`. Voor hosting bij TransIP is nog geen VPS aangemaakt of SSH-toegang ingesteld. Nog nodig: VPS aanmaken, het DNS-record `memory` naar die VPS laten wijzen, productiegeheimen invullen, HTTPS activeren, de MCP-server vanuit het echte ChatGPT/Codex-account verbinden en webpush op de echte iPhone/Mac met gesloten app controleren. Alex voegt de snelkoppelingen zelf toe. Stap 19/20 en de externe controles voor 14/17 zijn daarom niet volledig afgerond; GitHub-issues zijn niet automatisch gesloten.
