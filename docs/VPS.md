@@ -1,6 +1,24 @@
 # Later deployen vanuit GitHub
 
-Deze configuratie staat klaar voor een Linux-VPS met Docker Compose. Het voorlopige productieadres is `https://memory.pansier.nl`. De VPS moet nog bij TransIP worden aangemaakt; VPS-toegang, DNS en productiegeheimen zijn nog niet ingesteld. De app is nog niet online op dit adres.
+Deze configuratie staat klaar voor een Linux-VPS met Docker Compose. Het voorlopige productieadres is `https://memory.pansier.nl`. De nieuwe TransIP-VPS is `alexpansier-vps3`, met IPv4-adres `37.97.228.211`, gebruikersnaam `alexpansier`, Ubuntu 26.04 LTS, 1 core en 2 GB RAM. DNS en de daadwerkelijke app-installatie zijn nog niet bevestigd. De cloudomgeving kan geen publieke SSH-verbinding naar deze VPS maken; installatie kan vanaf Alex' Mac met de geselecteerde Mac-sleutel.
+
+## Installatie vanaf de Mac
+
+Stel eerst bij TransIP voor `pansier.nl` het A-record `memory` in op `37.97.228.211`. Gebruik een TTL van bijvoorbeeld 300 seconden. Controleer eventuele bestaande CNAME-/AAAA-records voor `memory`, zodat het subdomein alleen naar deze VPS wijst.
+
+Log in vanuit Terminal op de Mac:
+
+```sh
+ssh alexpansier@37.97.228.211
+```
+
+Controleer bij de eerste verbinding de SSH-hostfingerprint via de VPS-console voordat je die accepteert. Als de Mac-sleutel niet standaard wordt gevonden, selecteer je de bijbehorende privésleutel met `ssh -i /pad/naar/je/mac-sleutel alexpansier@37.97.228.211`.
+
+Het script `scripts/deploy-vps.sh` automatiseert de installatie op de VPS. Download het vanaf een gecontroleerde commit in deze repository en voer het met sudo uit met drie argumenten: `memory.pansier.nl`, `37.97.228.211` en de volledige commit-SHA. Het controleert vóór installatie of het verwachte IP-adres werkelijk op die server staat. Het installeert Docker/Compose, behoudt de geconfigureerde SSH-poorten in de firewall, opent 80/443, checkt de gekozen codeversie uit en maakt productiegeheimen op de VPS. Het hergebruikt bestaande geheimen bij opnieuw uitvoeren voor dezelfde commit; voor updates gebruik je de updateprocedure hieronder.
+
+De nieuwe login wordt rechtstreeks bewaard in `/opt/my-memory/data/LOGIN.production.txt` (alleen root kan lezen). Bekijk die in je eigen SSH-terminal met `sudo cat /opt/my-memory/data/LOGIN.production.txt`. Geheimen verschijnen niet in de installatie-uitvoer of in Git. De ontwikkellogin uit de cloud wordt niet overgenomen.
+
+Het script stelt de VPS-tijdzone in op Europe/Amsterdam, maakt direct een consistente SQLite-back-up en plant dagelijks een back-up om 03:17 Nederlandse tijd. Deze back-ups staan op dezelfde server; kopieer ze ook naar een andere locatie. DNS/HTTPS en echte apparaatcontroles blijven te controleren na uitvoering.
 
 ## Voorbereiding
 
