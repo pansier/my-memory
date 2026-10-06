@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { TableKit } from "@tiptap/extension-table";
 import Placeholder from "@tiptap/extension-placeholder";
 import {
   MoreHorizontal,
@@ -61,6 +62,39 @@ export function MemoryImage({ id }: { id: string }) {
     </span>
   );
 }
+export function MemoryAttachment({
+  attachment,
+}: {
+  attachment: NonNullable<Block["attachments"]>[number];
+}) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let active = true,
+      src = "";
+    void (async () => {
+      try {
+        const blob =
+          (await imageBlob(attachment.id)) ?? (await cacheImage(attachment.id));
+        src = URL.createObjectURL(blob);
+        if (active) setUrl(src);
+        else URL.revokeObjectURL(src);
+      } catch {}
+    })();
+    return () => {
+      active = false;
+      if (src) URL.revokeObjectURL(src);
+    };
+  }, [attachment.id]);
+  return (
+    <a
+      className="attachment"
+      href={url || undefined}
+      download={attachment.name}
+    >
+      {attachment.name} · PDF {url ? "↓" : "(offline nog niet geladen)"}
+    </a>
+  );
+}
 export function BlockRow({
   block,
   notes,
@@ -90,7 +124,14 @@ export function BlockRow({
   const attach = async (file: File) => {
     try {
       const id = await addImage(file);
-      save({ imageIds: [...current.current.block.imageIds, id] });
+      if (file.type === "application/pdf")
+        save({
+          attachments: [
+            ...(current.current.block.attachments ?? []),
+            { id, name: file.name, mime: "application/pdf", size: file.size },
+          ],
+        });
+      else save({ imageIds: [...current.current.block.imageIds, id] });
     } catch (e) {
       onError((e as Error).message);
     }
@@ -99,18 +140,10 @@ export function BlockRow({
     {
       extensions: [
         StarterKit.configure({
-          heading: false,
-          bulletList: false,
-          orderedList: false,
-          listItem: false,
-          blockquote: false,
-          codeBlock: false,
-          horizontalRule: false,
-          code: false,
-          link: false,
-          underline: false,
-          strike: false,
+          heading: { levels: [1, 2, 3, 4, 5, 6] },
+          link: { openOnClick: false, autolink: false },
         }),
+        TableKit,
         Placeholder.configure({
           placeholder:
             block.kind === "heading"
@@ -124,6 +157,13 @@ export function BlockRow({
       editorProps: {
         attributes: { "aria-label": "Inhoud van punt", role: "textbox" },
         handleKeyDown: (_view, event) => {
+          if (
+            editor?.isActive("table") ||
+            editor?.isActive("codeBlock") ||
+            editor?.isActive("listItem") ||
+            editor?.isActive("blockquote")
+          )
+            return false;
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
             current.current.onEnter({
@@ -201,8 +241,11 @@ export function BlockRow({
       )}
       <div className="block-body">
         <EditorContent editor={editor} />
-        {block.imageIds.length > 0 && (
+        {(block.imageIds.length > 0 || !!block.attachments?.length) && (
           <div className="image-strip">
+            {(block.attachments ?? []).map((a) => (
+              <MemoryAttachment key={a.id} attachment={a} />
+            ))}
             {block.imageIds.map((id) => (
               <MemoryImage key={id} id={id} />
             ))}
@@ -329,14 +372,14 @@ export function BlockRow({
             <ImagePlus size={16} /> Afbeelding toevoegen
             <input
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
+              accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) void attach(f);
               }}
             />
           </label>
-          {block.imageIds.length > 0 && (
+          {(block.imageIds.length > 0 || !!block.attachments?.length) && (
             <button
               className="text-button"
               onClick={() => save({ imageIds: [] })}

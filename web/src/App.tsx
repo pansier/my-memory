@@ -37,6 +37,8 @@ import {
   type Note,
   type Block,
   type Tag,
+  type Folder,
+  newFolder,
   newNote,
   newBlock,
   blocksOf,
@@ -45,6 +47,7 @@ import {
   base,
   text,
 } from "../../shared/model";
+import { Imports } from "./Imports";
 import * as store from "./store";
 import { BlockRow, localDate } from "./BlockRow";
 const nav = [
@@ -79,6 +82,8 @@ export function App() {
   const [title, setTitle] = useState("");
   const [isReusable, setReusable] = useState(false);
   const [focusId, setFocus] = useState("");
+  const [rowLimit, setRowLimit] = useState(100);
+  useEffect(() => setRowLimit(100), [view, selected, query]);
   const [active, setActive] = useState<{ editor: Editor; id: string } | null>(
     null,
   );
@@ -115,6 +120,14 @@ export function App() {
   const notes = alive
     .filter((e): e is Note => e.type === "note")
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const folders = alive
+    .filter((e): e is Folder => e.type === "folder")
+    .sort((a, b) => a.name.localeCompare(b.name, "nl"));
+  const folder = folders.find((f) => view === "folder:" + f.id);
+  const folderPath = (f: Folder): string => {
+    const parent = folders.find((p) => p.id === f.parentId);
+    return parent ? folderPath(parent) + " / " + f.name : f.name;
+  };
   const note = notes.find((n) => n.id === selected);
   const pointAlive = (b: Block) =>
     !b.deleted && (!b.noteId || notes.some((n) => n.id === b.noteId));
@@ -190,6 +203,12 @@ export function App() {
               .sort((a, b) =>
                 (a.dueAt ?? "9999").localeCompare(b.dueAt ?? "9999"),
               );
+  useEffect(() => {
+    if (focusId) {
+      const index = rows.findIndex((b) => b.id === focusId);
+      if (index >= rowLimit) setRowLimit(index + 25);
+    }
+  }, [focusId, rows.length, rowLimit]);
   const searchResults =
     query.length >= 3
       ? new Fuse(
@@ -197,7 +216,14 @@ export function App() {
             ...e,
             search:
               e.type === "note"
-                ? e.title + " " + e.tags.join(" ")
+                ? e.title +
+                  " " +
+                  e.tags.join(" ") +
+                  " " +
+                  folders
+                    .filter((f) => f.id === e.folderId)
+                    .map(folderPath)
+                    .join(" ")
                 : e.type === "block"
                   ? text(e.html) + " " + e.tags.join(" ")
                   : e.name,
@@ -284,6 +310,7 @@ export function App() {
   function create(event: FormEvent) {
     event.preventDefault();
     const n = newNote(title.trim() || "Nieuwe notitie", isReusable);
+    if (folder) n.folderId = folder.id;
     if (view.startsWith("tag:")) n.tags = [view.slice(4)];
     const b = newBlock(n.id, "", "text");
     save([n, b]);
@@ -295,7 +322,20 @@ export function App() {
   async function attach(file: File) {
     try {
       const id = await store.addImage(file);
-      const b = { ...newBlock(note?.id ?? null, "", "image"), imageIds: [id] };
+      const b =
+        file.type === "application/pdf"
+          ? {
+              ...newBlock(note?.id ?? null, "", "text"),
+              attachments: [
+                {
+                  id,
+                  name: file.name,
+                  mime: "application/pdf" as const,
+                  size: file.size,
+                },
+              ],
+            }
+          : { ...newBlock(note?.id ?? null, "", "image"), imageIds: [id] };
       save([b]);
       notify("Afbeelding lokaal bewaard");
     } catch (e) {
@@ -526,66 +566,100 @@ export function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-label">
-          ONDERWERPEN
-          <button
-            className="icon-button"
-            aria-label="Onderwerp toevoegen"
-            onClick={() => {
-              const name = prompt("Naam van hashtag");
-              if (name?.trim())
-                save([
-                  {
-                    ...base(),
-                    type: "tag",
-                    name: name.trim().replace(/^#/, ""),
-                  },
-                ]);
-            }}
-          >
-            <Plus size={15} />
-          </button>
-        </div>
-        <div className="tag-nav">
-          {tags.map((tag) => (
+        <div className="sidebar-content">
+          <div className="sidebar-label">
+            ONDERWERPEN
             <button
-              key={tag}
-              className={
-                view === "tag:" + tag ? "tag-item selected" : "tag-item"
-              }
-              onClick={() => go("tag:" + tag)}
+              className="icon-button"
+              aria-label="Onderwerp toevoegen"
+              onClick={() => {
+                const name = prompt("Naam van hashtag");
+                if (name?.trim())
+                  save([
+                    {
+                      ...base(),
+                      type: "tag",
+                      name: name.trim().replace(/^#/, ""),
+                    },
+                  ]);
+              }}
             >
-              <Hash size={16} />
-              {tag}
-              <ChevronRight size={13} />
+              <Plus size={15} />
             </button>
-          ))}
-          {!tags.length && (
-            <span className="sidebar-hint">Geef je notities een hashtag.</span>
-          )}
-        </div>
-        <div className="sidebar-label">
-          JE NOTITIES
-          <button
-            className="icon-button"
-            aria-label="Notitie toevoegen"
-            onClick={() => setNewDialog(true)}
-          >
-            <Plus size={15} />
-          </button>
-        </div>
-        <div className="note-nav">
-          {notes.slice(0, 12).map((n) => (
+          </div>
+          <div className="tag-nav">
+            {tags.map((tag) => (
+              <button
+                key={tag}
+                className={
+                  view === "tag:" + tag ? "tag-item selected" : "tag-item"
+                }
+                onClick={() => go("tag:" + tag)}
+              >
+                <Hash size={16} />
+                {tag}
+                <ChevronRight size={13} />
+              </button>
+            ))}
+            {!tags.length && (
+              <span className="sidebar-hint">
+                Geef je notities een hashtag.
+              </span>
+            )}
+          </div>
+          <div className="sidebar-label">
+            MAPPEN
             <button
-              key={n.id}
-              className={note?.id === n.id ? "note-link selected" : "note-link"}
-              onClick={() => go("notes", n.id)}
+              className="icon-button"
+              aria-label="Map toevoegen"
+              onClick={() => {
+                const name = prompt("Naam van nieuwe map")?.trim();
+                if (name) save([newFolder(name, folder?.id ?? null)]);
+              }}
             >
-              <NotebookPen size={14} />
-              <span>{n.title || "Zonder titel"}</span>
-              {n.reusable && <RotateCcw size={12} />}
+              <Plus size={15} />
             </button>
-          ))}
+          </div>
+          <div className="folder-nav">
+            {folders.map((f) => (
+              <button
+                key={f.id}
+                className={
+                  folder?.id === f.id ? "note-link selected" : "note-link"
+                }
+                onClick={() => go("folder:" + f.id)}
+              >
+                <NotebookPen size={14} />
+                <span>{folderPath(f)}</span>
+                <small>{notes.filter((n) => n.folderId === f.id).length}</small>
+              </button>
+            ))}
+          </div>
+          <div className="sidebar-label">
+            JE NOTITIES
+            <button
+              className="icon-button"
+              aria-label="Notitie toevoegen"
+              onClick={() => setNewDialog(true)}
+            >
+              <Plus size={15} />
+            </button>
+          </div>
+          <div className="note-nav">
+            {notes.slice(0, 12).map((n) => (
+              <button
+                key={n.id}
+                className={
+                  note?.id === n.id ? "note-link selected" : "note-link"
+                }
+                onClick={() => go("notes", n.id)}
+              >
+                <NotebookPen size={14} />
+                <span>{n.title || "Zonder titel"}</span>
+                {n.reusable && <RotateCcw size={12} />}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="sidebar-bottom">
           <button className="new-note" onClick={() => setNewDialog(true)}>
@@ -617,6 +691,7 @@ export function App() {
             <ChevronRight size={13} />
             <strong>
               {note?.title ??
+                folder?.name ??
                 (view.startsWith("tag:")
                   ? "#" + view.slice(4)
                   : nav.find((n) => n.id === view)?.title)}
@@ -753,6 +828,7 @@ export function App() {
                     onClick={() => {
                       if (item.type === "note") go("notes", item.id);
                       else if (item.type === "tag") go("tag:" + item.name);
+                      else if (item.type === "folder") go("folder:" + item.id);
                       else {
                         go(
                           archived(item, entities)
@@ -769,7 +845,7 @@ export function App() {
                     <span className="result-icon">
                       {item.type === "note" ? (
                         <NotebookPen size={18} />
-                      ) : item.type === "tag" ? (
+                      ) : item.type === "tag" || item.type === "folder" ? (
                         <Hash size={18} />
                       ) : (
                         <CheckSquare size={18} />
@@ -778,7 +854,7 @@ export function App() {
                     <span>
                       {item.type === "note"
                         ? item.title
-                        : item.type === "tag"
+                        : item.type === "tag" || item.type === "folder"
                           ? item.name
                           : text(item.html)}
                       <small>
@@ -826,7 +902,8 @@ export function App() {
                     <h1>
                       {view.startsWith("tag:")
                         ? "#" + view.slice(4)
-                        : nav.find((n) => n.id === view)?.title}
+                        : (folder?.name ??
+                          nav.find((n) => n.id === view)?.title)}
                       <span>.</span>
                     </h1>
                   )}
@@ -846,7 +923,7 @@ export function App() {
                               : "Alles wat nog aandacht vraagt, op datum gesorteerd."}
                   </p>
                 </div>
-                {!note && view === "notes" && (
+                {!note && (view === "notes" || !!folder) && (
                   <button
                     className="primary small"
                     onClick={() => setNewDialog(true)}
@@ -856,9 +933,58 @@ export function App() {
                   </button>
                 )}
               </div>
+              {folder && !note && (
+                <div className="note-actions">
+                  <button
+                    onClick={() => {
+                      const name = prompt(
+                        "Nieuwe mapnaam",
+                        folder.name,
+                      )?.trim();
+                      if (name) save([{ ...folder, name }]);
+                    }}
+                  >
+                    Map hernoemen
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (
+                        notes.some((n) => n.folderId === folder.id) ||
+                        folders.some((f) => f.parentId === folder.id)
+                      ) {
+                        report("Verplaats eerst de inhoud van deze map.");
+                        return;
+                      }
+                      if (confirm("Deze lege map verwijderen?")) {
+                        save([{ ...folder, deleted: true }]);
+                        go("notes");
+                      }
+                    }}
+                  >
+                    Lege map verwijderen
+                  </button>
+                </div>
+              )}
               {note && (
                 <>
                   <div className="note-meta">
+                    <label>
+                      Map{" "}
+                      <select
+                        aria-label="Map van notitie"
+                        value={note.folderId ?? ""}
+                        onChange={(e) =>
+                          save([{ ...note, folderId: e.target.value || null }])
+                        }
+                      >
+                        <option value="">Zonder map</option>
+                        {folders.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {folderPath(f)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <label className="tags-input">
                       <Hash size={15} />
                       <input
@@ -1003,14 +1129,15 @@ export function App() {
                   </div>
                 </form>
               )}
-              {((view === "notes" && !note) ||
+              {(((view === "notes" || !!folder) && !note) ||
                 (view.startsWith("tag:") && !note)) && (
                 <div className="note-grid">
                   {notes
-                    .filter(
-                      (n) =>
-                        !view.startsWith("tag:") ||
-                        n.tags.includes(view.slice(4)),
+                    .filter((n) =>
+                      folder
+                        ? n.folderId === folder.id
+                        : !view.startsWith("tag:") ||
+                          n.tags.includes(view.slice(4)),
                     )
                     .map((n) => {
                       const bs = blocksOf(entities, n.id);
@@ -1042,7 +1169,8 @@ export function App() {
                           </p>
                           <div className="card-footer">
                             <span>
-                              {n.tags.map((t) => "#" + t).join(" ") ||
+                              {folders.find((f) => f.id === n.folderId)?.name ||
+                                n.tags.map((t) => "#" + t).join(" ") ||
                                 "Zonder onderwerp"}
                             </span>
                             <small>
@@ -1056,7 +1184,7 @@ export function App() {
                         </button>
                       );
                     })}
-                  {view === "notes" && (
+                  {(view === "notes" || !!folder) && (
                     <button
                       className="note-card create-card"
                       onClick={() => setNewDialog(true)}
@@ -1067,7 +1195,7 @@ export function App() {
                   )}
                 </div>
               )}
-              {(view !== "notes" || !!note) && (
+              {((view !== "notes" && !folder) || !!note) && (
                 <div
                   className={`document ${note?.view === "tasks" ? "compact" : ""}`}
                 >
@@ -1160,15 +1288,158 @@ export function App() {
                         <IndentDecrease size={17} />
                       </button>
                       <i />
+                      <button
+                        aria-label="Onderstrepen"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          active?.editor.chain().focus().toggleUnderline().run()
+                        }
+                      >
+                        U
+                      </button>
+                      <button
+                        aria-label="Doorhalen"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          active?.editor.chain().focus().toggleStrike().run()
+                        }
+                      >
+                        <s>S</s>
+                      </button>
+                      <button
+                        aria-label="Link toevoegen"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          const href = prompt(
+                            "Link (https://, mailto: of tel:)",
+                          );
+                          if (href && /^(https?:|mailto:|tel:)/i.test(href))
+                            active?.editor
+                              .chain()
+                              .focus()
+                              .extendMarkRange("link")
+                              .setLink({ href })
+                              .run();
+                        }}
+                      >
+                        Link
+                      </button>
+                      {active?.editor.isActive("link") && (
+                        <a
+                          className="toolbar-link"
+                          href={active.editor.getAttributes("link").href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Link openen ↗
+                        </a>
+                      )}
+                      <button
+                        aria-label="Genummerde lijst"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          active?.editor
+                            .chain()
+                            .focus()
+                            .toggleOrderedList()
+                            .run()
+                        }
+                      >
+                        1.
+                      </button>
+                      <button
+                        aria-label="Citaat"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          active?.editor
+                            .chain()
+                            .focus()
+                            .toggleBlockquote()
+                            .run()
+                        }
+                      >
+                        “”
+                      </button>
+                      <button
+                        aria-label="Codeblok"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          active?.editor.chain().focus().toggleCodeBlock().run()
+                        }
+                      >
+                        &lt;/&gt;
+                      </button>
+                      <button
+                        aria-label="Tabel toevoegen"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() =>
+                          active?.editor
+                            .chain()
+                            .focus()
+                            .insertTable({
+                              rows: 3,
+                              cols: 3,
+                              withHeaderRow: true,
+                            })
+                            .run()
+                        }
+                      >
+                        Tabel
+                      </button>
+                      {active?.editor.isActive("table") && (
+                        <>
+                          <button
+                            aria-label="Tabelrij toevoegen"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() =>
+                              active.editor.chain().focus().addRowAfter().run()
+                            }
+                          >
+                            + rij
+                          </button>
+                          <button
+                            aria-label="Tabelkolom toevoegen"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() =>
+                              active.editor
+                                .chain()
+                                .focus()
+                                .addColumnAfter()
+                                .run()
+                            }
+                          >
+                            + kolom
+                          </button>
+                          <button
+                            aria-label="Tabelrij verwijderen"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() =>
+                              active.editor.chain().focus().deleteRow().run()
+                            }
+                          >
+                            − rij
+                          </button>
+                          <button
+                            aria-label="Tabelkolom verwijderen"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() =>
+                              active.editor.chain().focus().deleteColumn().run()
+                            }
+                          >
+                            − kolom
+                          </button>
+                        </>
+                      )}
+                      <i />
                       <label
                         className="toolbar-file"
-                        title="Afbeelding toevoegen"
+                        title="Afbeelding of PDF toevoegen"
                       >
                         <ImagePlus size={17} />
                         <input
                           aria-label="Afbeelding aan notitie toevoegen"
                           type="file"
-                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
                           onChange={(e) => {
                             const f = e.target.files?.[0];
                             if (f) void attach(f);
@@ -1177,7 +1448,7 @@ export function App() {
                       </label>
                     </div>
                   )}
-                  {rows.map((b) => (
+                  {rows.slice(0, rowLimit).map((b) => (
                     <div key={b.id} className="point-container">
                       {!note && b.noteId && (
                         <button
@@ -1199,6 +1470,14 @@ export function App() {
                       />
                     </div>
                   ))}
+                  {rows.length > rowLimit && (
+                    <button
+                      className="settings-action"
+                      onClick={() => setRowLimit((v) => v + 100)}
+                    >
+                      Meer punten tonen ({rows.length - rowLimit})
+                    </button>
+                  )}
                   {!rows.length && (view !== "notes" || note) && (
                     <div className="empty">
                       <span className="empty-icon">
@@ -1399,6 +1678,7 @@ export function App() {
               {s.pending.length} lokale wijzigingen in de wachtrij ·{" "}
               {s.conflicts.length} verschillen
             </p>
+            <Imports onError={report} onNotice={notify} />
             <button className="settings-action" onClick={() => void download()}>
               <Download size={18} />
               <span>

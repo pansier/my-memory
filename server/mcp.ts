@@ -8,6 +8,7 @@ import {
   id,
   newBlock,
   newNote,
+  newFolder,
   blocksOf,
   cloneNote,
   headings,
@@ -101,10 +102,26 @@ export function makeMcp(store: Store) {
         title: z.string().max(300),
         reusable: z.boolean().default(false),
         tags: z.array(z.string()).default([]),
+        folderId: id.nullable().optional(),
       },
     },
-    async ({ title, reusable, tags }) =>
-      output(store.saveEntities([{ ...newNote(title, reusable), tags }])),
+    async ({ title, reusable, tags, folderId }) =>
+      output(
+        store.saveEntities([{ ...newNote(title, reusable), tags, folderId }]),
+      ),
+  );
+  server.registerTool(
+    "create_folder",
+    {
+      description:
+        "Create a named folder; optional parentId creates a subfolder.",
+      inputSchema: {
+        name: z.string().min(1).max(100),
+        parentId: id.nullable().default(null),
+      },
+    },
+    async ({ name, parentId }) =>
+      output(store.saveEntities([newFolder(name, parentId)])),
   );
   server.registerTool(
     "add_point",

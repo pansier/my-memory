@@ -9,6 +9,14 @@ import { z } from "zod";
 import { auth, sha, verifyPassword } from "./auth.ts";
 import { Store } from "./store.ts";
 import { syncSchema, id } from "../shared/model.ts";
+import {
+  applyImport,
+  importRecords,
+  importSummary,
+  importSchema,
+  previewUndo,
+  undoImport,
+} from "./imports.ts";
 import { handleMcp } from "./mcp.ts";
 export type Config = {
   passwordHash: string;
@@ -45,7 +53,7 @@ export function createApp(store: Store, config: Config) {
     }),
   );
   app.use(cookieParser());
-  app.use(express.json({ limit: "2mb" }));
+  app.use(express.json({ limit: "20mb" }));
   app.get("/api/health", (_req, res) =>
     res.json({ ok: true, version: "1.0.0" }),
   );
@@ -121,6 +129,25 @@ export function createApp(store: Store, config: Config) {
   app.post("/api/sync", (req, res) =>
     res.json(store.sync(syncSchema.parse(req.body).mutations)),
   );
+  app.get("/api/imports", (_req, res) =>
+    res.json({ imports: importRecords(store).map(importSummary) }),
+  );
+  app.post("/api/imports", (req, res) =>
+    res.status(201).json(applyImport(store, importSchema.parse(req.body))),
+  );
+  app.get("/api/imports/:id/undo", (req, res) =>
+    res.json(previewUndo(store, id.parse(req.params.id))),
+  );
+  app.post("/api/imports/:id/undo", (req, res) =>
+    res.json(
+      undoImport(
+        store,
+        id.parse(req.params.id),
+        z.object({ includeChanged: z.boolean().default(false) }).parse(req.body)
+          .includeChanged,
+      ),
+    ),
+  );
   app.get("/api/entities", (_req, res) => res.json({ entities: store.all() }));
   app.get("/api/images/:id", (req, res) => {
     const image = store.db
@@ -137,8 +164,14 @@ export function createApp(store: Store, config: Config) {
   app.put(
     "/api/images/:id",
     express.raw({
-      type: ["image/png", "image/jpeg", "image/webp", "image/gif"],
-      limit: "10mb",
+      type: [
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/gif",
+        "application/pdf",
+      ],
+      limit: "50mb",
     }),
     (req, res) => {
       const imageId = id.parse(req.params.id);
@@ -147,6 +180,8 @@ export function createApp(store: Store, config: Config) {
       if (!Buffer.isBuffer(data) || data.length < 12)
         return res.status(400).json({ error: "Ongeldige afbeelding." });
       const valid =
+        (mime === "application/pdf" &&
+          data.subarray(0, 5).toString() === "%PDF-") ||
         (mime === "image/png" &&
           data
             .subarray(0, 8)

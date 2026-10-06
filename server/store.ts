@@ -11,8 +11,45 @@ import {
 } from "../shared/model.ts";
 export function cleanHtml(html: string) {
   return sanitize(html, {
-    allowedTags: ["p", "br", "strong", "em", "b", "i"],
-    allowedAttributes: {},
+    allowedTags: [
+      "p",
+      "br",
+      "strong",
+      "em",
+      "b",
+      "i",
+      "u",
+      "s",
+      "del",
+      "a",
+      "ul",
+      "ol",
+      "li",
+      "blockquote",
+      "pre",
+      "code",
+      "table",
+      "thead",
+      "tbody",
+      "tr",
+      "th",
+      "td",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "hr",
+    ],
+    allowedAttributes: {
+      a: ["href", "title"],
+      ol: ["start"],
+      td: ["colspan", "rowspan", "colwidth"],
+      th: ["colspan", "rowspan", "colwidth"],
+    },
+    allowedSchemes: ["http", "https", "mailto", "tel"],
+    allowProtocolRelative: false,
   });
 }
 export class Store {
@@ -28,6 +65,7 @@ export class Store {
   CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY, expires INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS subscriptions(id TEXT PRIMARY KEY, data TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS deliveries(key TEXT PRIMARY KEY, block_id TEXT NOT NULL, due TEXT NOT NULL, subscription_id TEXT NOT NULL, state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, retry_at INTEGER NOT NULL DEFAULT 0);
+  CREATE TABLE IF NOT EXISTS imports(id TEXT PRIMARY KEY, data TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
   INSERT OR IGNORE INTO meta VALUES('schema_version','1');`);
   }
@@ -63,7 +101,35 @@ export class Store {
       throw new Error("Entity type cannot change");
     if (remote?.deleted && !parsed.deleted)
       throw new Error("Deleted item cannot be restored; create a copy");
-    if (parsed.type === "block" && parsed.noteId) {
+    if (parsed.type === "folder") {
+      let parent = parsed.parentId;
+      const seen = new Set([parsed.id]);
+      while (parent) {
+        if (seen.has(parent))
+          throw new Error("Mappen mogen geen kring vormen.");
+        seen.add(parent);
+        const folder = this.get(parent);
+        if (!folder || folder.type !== "folder" || folder.deleted)
+          throw new Error("Bovenliggende map bestaat niet.");
+        parent = folder.parentId;
+      }
+      if (
+        parsed.deleted &&
+        this.all().some(
+          (e) =>
+            !e.deleted &&
+            ((e.type === "note" && e.folderId === parsed.id) ||
+              (e.type === "folder" && e.parentId === parsed.id)),
+        )
+      )
+        throw new Error("Verplaats eerst de inhoud van deze map.");
+    }
+    if (parsed.type === "note" && parsed.folderId) {
+      const folder = this.get(parsed.folderId);
+      if (!folder || folder.type !== "folder" || folder.deleted)
+        throw new Error("Map bestaat niet.");
+    }
+    if (parsed.type === "block" && parsed.noteId && !parsed.deleted) {
       const note = this.get(parsed.noteId);
       if (!note || note.type !== "note") throw new Error("Note does not exist");
       if (note.deleted)
@@ -75,7 +141,10 @@ export class Store {
         };
     }
     if (parsed.type === "block")
-      for (const image of parsed.imageIds)
+      for (const image of [
+        ...parsed.imageIds,
+        ...(parsed.attachments ?? []).map((a) => a.id),
+      ])
         if (!this.db.prepare("SELECT id FROM images WHERE id=?").get(image))
           throw new Error("Image not uploaded");
     const entity: Entity = {

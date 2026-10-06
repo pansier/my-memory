@@ -557,3 +557,98 @@ test("blocked push permission explains how to enable notifications without anoth
     "data-unexpected-push-prompt",
   );
 });
+
+test("folders, editable tables and PDF attachments work; import undo is scoped", async ({
+  page,
+}) => {
+  await login(page);
+  page.once("dialog", (d) => d.accept("Reizen"));
+  await page
+    .getByRole("button", { name: "Map toevoegen", exact: true })
+    .click();
+  await page
+    .locator(".folder-nav")
+    .getByRole("button", { name: /Reizen/ })
+    .click();
+  await createNote(page, "Bewerkbare tabel");
+  await expect(page.getByLabel("Map van notitie")).not.toHaveValue("");
+  const editor = page.getByRole("textbox", { name: "Inhoud van punt" }).first();
+  await editor.click();
+  await page
+    .getByRole("button", { name: "Tabel toevoegen", exact: true })
+    .click();
+  await expect(editor.locator("table")).toBeVisible();
+  await editor.locator("td p").first().fill("Zelf ingevuld");
+  await page
+    .getByRole("button", { name: "Tabelrij toevoegen", exact: true })
+    .click();
+  await expect(editor.locator("tr")).toHaveCount(4);
+  await page
+    .getByLabel("Afbeelding aan notitie toevoegen")
+    .setInputFiles({
+      name: "voorbeeld.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4\n%%EOF\n"),
+    });
+  await expect(page.getByRole("link", { name: /voorbeeld.pdf/ })).toBeVisible();
+  await synced(page);
+  const data = await page.evaluate(async () => {
+    const f = {
+      id: crypto.randomUUID(),
+      version: 0,
+      updatedAt: new Date().toISOString(),
+      deleted: false,
+      type: "folder",
+      name: "Importmap",
+      parentId: null,
+      tags: [],
+    };
+    const n = {
+      ...f,
+      id: crypto.randomUUID(),
+      type: "note",
+      title: "Import-test",
+      folderId: f.id,
+      reusable: false,
+      view: "document",
+    };
+    delete (n as any).parentId;
+    delete (n as any).name;
+    const id = crypto.randomUUID();
+    const res = await fetch("/api/imports", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Memory-Account": "owner",
+      },
+      body: JSON.stringify({
+        id,
+        label: "Testimport",
+        source: "apple-notes",
+        entities: [f, n],
+        warnings: [],
+      }),
+    });
+    return { status: res.status, id };
+  });
+  expect(data.status).toBe(201);
+  await page
+    .getByRole("button", { name: /Gesynchroniseerd/, exact: true })
+    .click();
+  await expect(
+    page.locator(".folder-nav").getByRole("button", { name: /Importmap/ }),
+  ).toBeVisible();
+  await page.locator(".account").click();
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "Import terugdraaien", exact: true })
+    .click();
+  await expect(page.getByText(/Teruggedraaid op/)).toBeVisible();
+  await page.getByRole("button", { name: "Sluiten", exact: true }).click();
+  await expect(
+    page.locator(".folder-nav").getByRole("button", { name: /Importmap/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".folder-nav").getByRole("button", { name: /Reizen/ }),
+  ).toBeVisible();
+});

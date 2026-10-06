@@ -280,12 +280,16 @@ export async function imageBlob(id: string): Promise<Blob | undefined> {
 }
 export async function addImage(file: File): Promise<string> {
   if (
-    !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
-      file.type,
-    ) ||
-    file.size > 10 * 1024 * 1024
+    ![
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+      "image/gif",
+      "application/pdf",
+    ].includes(file.type) ||
+    file.size > 50 * 1024 * 1024
   )
-    throw new Error("Kies een PNG, JPEG, WebP of GIF van maximaal 10 MB.");
+    throw new Error("Kies een afbeelding of PDF van maximaal 50 MB.");
   const accountId = activeAccount?.id;
   if (!accountId) throw new Error("Log eerst in.");
   const id = crypto.randomUUID();
@@ -298,7 +302,11 @@ export async function offlineDownload() {
   await sync();
   for (const e of snapshot.entities)
     if (e.type === "block" && !e.deleted)
-      for (const id of e.imageIds) await cacheImage(id);
+      for (const id of [
+        ...e.imageIds,
+        ...(e.attachments ?? []).map((a) => a.id),
+      ])
+        await cacheImage(id);
   if (navigator.storage?.persist) await navigator.storage.persist();
 }
 export async function cacheImage(id: string) {
@@ -345,8 +353,24 @@ export async function sync() {
           sent = [...first.values()]
             .sort(
               (a, b) =>
-                (a.entity.type === "note" ? (a.entity.deleted ? 2 : 0) : 1) -
-                (b.entity.type === "note" ? (b.entity.deleted ? 2 : 0) : 1),
+                (a.entity.type === "folder"
+                  ? a.entity.deleted
+                    ? 3
+                    : -1
+                  : a.entity.type === "note"
+                    ? a.entity.deleted
+                      ? 2
+                      : 0
+                    : 1) -
+                (b.entity.type === "folder"
+                  ? b.entity.deleted
+                    ? 3
+                    : -1
+                  : b.entity.type === "note"
+                    ? b.entity.deleted
+                      ? 2
+                      : 0
+                    : 1),
             )
             .slice(0, 100)
             .filter((m) => {
@@ -362,7 +386,10 @@ export async function sync() {
         });
         for (const m of sent)
           if (m.entity.type === "block")
-            for (const id of m.entity.imageIds) {
+            for (const id of [
+              ...m.entity.imageIds,
+              ...(m.entity.attachments ?? []).map((a) => a.id),
+            ]) {
               const blob = await imageBlob(id);
               if (blob && !uploadedImages.has(id)) {
                 const res = await accountFetch("/api/images/" + id, {
@@ -454,7 +481,10 @@ export async function exportData() {
   const images: Record<string, string> = {};
   for (const e of snapshot.entities)
     if (e.type === "block")
-      for (const id of e.imageIds) {
+      for (const id of [
+        ...e.imageIds,
+        ...(e.attachments ?? []).map((a) => a.id),
+      ]) {
         const b = await imageBlob(id);
         if (b)
           images[id] = await new Promise<string>((resolve, reject) => {

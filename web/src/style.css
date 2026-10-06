@@ -1478,3 +1478,109 @@ nav {
     transition: none !important;
   }
 }
+
+.folder-nav {
+  max-height: 220px;
+  overflow: auto;
+  margin-bottom: 12px;
+}
+.folder-nav .note-link small {
+  margin-left: auto;
+}
+.import-history {
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid #dedbd4;
+  border-radius: 12px;
+}
+.import-history h3 {
+  margin-top: 0;
+}
+.import-history p {
+  font-size: 14px;
+}
+.import-entry {
+  padding: 12px 0;
+  border-top: 1px solid #dedbd4;
+}
+.import-entry strong,
+.import-entry small {
+  display: block;
+  margin-bottom: 5px;
+}
+.settings-modal {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.formatbar {
+  flex-wrap: wrap;
+}
+.tiptap table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 10px 0;
+}
+.tiptap td,
+.tiptap th {
+  border: 1px solid #cdc9c0;
+  padding: 8px;
+  vertical-align: top;
+  min-width: 50px;
+}
+.tiptap th {
+  background: #f1eee7;
+  font-weight: 600;
+}
+.tiptap blockquote {
+  border-left: 3px solid #b7b09f;
+  padding-left: 16px;
+  margin: 8px 0;
+  color: #656052;
+}
+.tiptap pre {
+  white-space: pre-wrap;
+  overflow: auto;
+  background: #f4f2ed;
+  padding: 12px;
+  border-radius: 8px;
+}
+.tiptap a {
+  color: #8c5c28;
+  text-decoration: underline;
+}
+.attachment {
+  display: block;
+  padding: 10px;
+  border: 1px solid #d9d5cc;
+  border-radius: 8px;
+  margin: 8px 0;
+  color: inherit;
+}
+.tiptap li p {
+  margin: 0;
+}
+.tiptap ol,
+.tiptap ul {
+  padding-left: 24px;
+}
+.tiptap .selectedCell {
+  background: #f0eadb;
+}
+.block-content {
+  min-width: 0;
+}
+
+.sidebar-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+.sidebar-content .note-nav {
+  flex: none;
+  max-height: 200px;
+}
+.sidebar-content .folder-nav {
+  flex-shrink: 0;
+}

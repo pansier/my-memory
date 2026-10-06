@@ -13,6 +13,14 @@ export const noteSchema = z.object({
   tags: z.array(z.string().min(1).max(60)).max(50),
   reusable: z.boolean(),
   view: z.enum(["document", "tasks"]),
+  folderId: id.nullable().optional(),
+  source: z
+    .object({
+      app: z.literal("apple-notes"),
+      id: z.string().max(200),
+      importId: id,
+    })
+    .optional(),
 });
 export const blockSchema = z.object({
   ...common,
@@ -27,16 +35,42 @@ export const blockSchema = z.object({
   dueAt: z.string().datetime().nullable(),
   tags: z.array(z.string().min(1).max(60)).max(50),
   imageIds: z.array(id).max(20),
+  attachments: z
+    .array(
+      z.object({
+        id,
+        name: z.string().max(300),
+        mime: z.literal("application/pdf"),
+        size: z.number().int().min(0),
+      }),
+    )
+    .max(20)
+    .optional(),
 });
 export const tagSchema = z.object({
   ...common,
   type: z.literal("tag"),
   name: z.string().min(1).max(60),
 });
+export const folderSchema = z.object({
+  ...common,
+  type: z.literal("folder"),
+  name: z.string().min(1).max(100),
+  parentId: id.nullable(),
+  tags: z.array(z.string()).max(0),
+});
+export type Folder = z.infer<typeof folderSchema>;
+export function newFolder(
+  name: string,
+  parentId: string | null = null,
+): Folder {
+  return { ...base(), type: "folder", name, parentId, tags: [] };
+}
 export const entitySchema = z.discriminatedUnion("type", [
   noteSchema,
   blockSchema,
   tagSchema,
+  folderSchema,
 ]);
 export type Note = z.infer<typeof noteSchema>;
 export type Block = z.infer<typeof blockSchema>;
@@ -135,6 +169,7 @@ export function headings(blocks: Block[]) {
       (b) =>
         b.kind === "heading" ||
         b.kind === "subheading" ||
+        /^<h[1-6][ >]/.test(b.html) ||
         /^<p><strong>.*<\/strong><\/p>$/.test(b.html),
     )
     .map((b) => ({ id: b.id, title: text(b.html), indent: b.indent }));

@@ -105,7 +105,7 @@ export function createAccountsApp(
 ) {
   const app = express();
   if (config.production) app.set("trust proxy", 1);
-  app.use(express.json({ limit: "2mb" }));
+  app.use(express.json({ limit: "20mb" }));
   app.use(cookieParser());
   const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
