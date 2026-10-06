@@ -23,7 +23,7 @@ test("Apple Markdown becomes editable mixed content, preserving headings, checkm
     const path = join(root, "Lijst.md");
     writeFileSync(
       path,
-      '# **Mijn blad**\n\n## Onderdeel\n\nEen **vette** en *cursieve* [link](https://example.com). Datum 1 juli 2027.\n\n- [x] Klaar\n  - [ ] Kind\n- Los punt\n\n1. Eerste\n2. Tweede\n\n| A | B |\n|---|---|\n| C | D |\n\n![Foto](Attachments/photo.png)\n\n[Bijlage](Attachments/file.pdf)\n\n<NAAM>\n\n```\n<img src="private.example">\n```\n',
+      '# **Mijn blad**\n\n## Onderdeel\n\nEen **vette** en *cursieve* [link](https://example.com). Datum 1 juli 2027.\n\n- [x] Klaar\n  - [ ] Kind\n- Los punt\n- [ ]\n\n1. Eerste\n2. Tweede\n\n| A | B |\n|---|---|\n| C | D |\n\n![Foto](Attachments/photo.png)\n\n[Bijlage](Attachments/file.pdf)\n\n<NAAM>\n\n```\n<img src="private.example">\n```\n',
     );
     const manifest = join(root, "source.json"),
       out = join(root, "prepared");
@@ -52,6 +52,7 @@ test("Apple Markdown becomes editable mixed content, preserving headings, checkm
     assert.match(done!.html, /Klaar/);
     const nested = blocks.find((b) => b.kind === "task" && !b.done);
     assert.equal(nested?.indent, 1);
+    assert.equal(blocks.filter((b) => b.kind === "task" && !b.html).length, 1);
     const html = blocks.map((b) => b.html).join("");
     assert.match(html, /<h2>Onderdeel/);
     assert.match(html, /<strong>vette/);

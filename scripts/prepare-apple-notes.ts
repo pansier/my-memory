@@ -192,6 +192,14 @@ for (const source of sources) {
         const list = token as Tokens.List;
         let ordinal = typeof list.start === "number" ? list.start : 1;
         for (const item of list.items) {
+          // Marked does not classify a checkbox with no label as a task.
+          // Apple exports these as ordinary empty checklist rows.
+          const emptyCheck = /^\[([ xX])\]\s*$/.exec(item.text);
+          if (emptyCheck) {
+            item.task = true;
+            item.checked = emptyCheck[1].toLowerCase() === "x";
+            item.tokens = [];
+          }
           const own = item.tokens.filter((t) => t.type !== "list");
           const r = render(own);
           let html = r.html,
