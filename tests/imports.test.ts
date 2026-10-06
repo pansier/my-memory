@@ -13,6 +13,7 @@ import {
   newFolder,
   archived,
   cloneNote,
+  type Entity,
 } from "../shared/model.ts";
 test("import is atomic, idempotent, scoped; undo preserves independently added and edited notes", () => {
   const s = new Store(":memory:");
@@ -139,5 +140,162 @@ test("undo of a previously deleted imported note still tombstones remaining chil
   s.saveEntities([{ ...(s.get(n.id) as typeof n), deleted: true }]);
   undoImport(s, input.id);
   assert.equal(s.get(b.id)?.deleted, true);
+  s.close();
+});
+
+test("replacement is atomic and idempotent, protects edited pages and folders; undo restores prior content", async () => {
+  const { replaceImport, previewReplacement } =
+    await import("../server/imports.ts");
+  const s = new Store(":memory:");
+  const own = newNote("Todoist");
+  s.saveEntities([own]);
+  const oldId = crypto.randomUUID(),
+    nextId = crypto.randomUUID();
+  const f = newFolder("Fotografie");
+  const make = (title: string) => ({
+    ...newNote(title),
+    folderId: f.id,
+    source: {
+      app: "apple-notes" as const,
+      id: crypto.randomUUID(),
+      importId: oldId,
+    },
+  });
+  const n = make("BIO"),
+    edited = make("Helgoland"),
+    removed = make("Verwijderd");
+  const a = newBlock(n.id, "<p>Eerste</p>", "text"),
+    b = newBlock(n.id, "<p>Tweede</p>", "text"),
+    c = newBlock(edited.id, "<p>Oud</p>", "text"),
+    d = newBlock(removed.id, "Weg", "text");
+  applyImport(s, {
+    id: oldId,
+    label: "Bron",
+    source: "apple-notes",
+    entities: [f, n, edited, removed, a, b, c, d],
+    warnings: [],
+  });
+  s.saveEntities([
+    { ...(s.get(c.id) as typeof c), html: "<p>Mijn eigen wijziging</p>" },
+    { ...(s.get(f.id) as typeof f), name: "Mijn fotografie" },
+    { ...(s.get(removed.id) as typeof removed), deleted: true },
+  ]);
+  const expectedOwn = s.get(own.id),
+    expectedEdit = s.get(c.id),
+    expectedFolder = s.get(f.id);
+  const fresh = newBlock(n.id, "<p>Eerste</p><p>Tweede</p>", "text");
+  const plan = {
+    id: nextId,
+    label: "Documenten",
+    source: "apple-notes" as const,
+    entities: [
+      f,
+      ...[n, edited, removed].map((n) => ({
+        ...n,
+        source: { ...n.source, importId: nextId },
+        view: "document" as const,
+      })),
+      fresh,
+      newBlock(edited.id, "Vervang niet", "text"),
+      newBlock(removed.id, "Niet terugzetten", "text"),
+    ],
+    warnings: [],
+  };
+  assert.equal(previewReplacement(s, oldId, plan).replacedNotes, 1);
+  assert.equal(previewReplacement(s, oldId, plan).preservedNotes, 2);
+  const invalid = {
+    ...plan,
+    entities: plan.entities.map((e) =>
+      e.id === fresh.id ? { ...fresh, imageIds: [crypto.randomUUID()] } : e,
+    ),
+  };
+  assert.throws(() => replaceImport(s, oldId, invalid));
+  assert.equal(s.get(a.id)?.deleted, false);
+  assert.equal(s.get(n.id)?.version, 1);
+  assert.equal(importRecords(s).length, 1);
+  replaceImport(s, oldId, plan);
+  replaceImport(s, oldId, plan);
+  assert.equal(importRecords(s).length, 2);
+  assert.equal(s.get(a.id)?.deleted, true);
+  assert.equal(s.get(b.id)?.deleted, true);
+  assert.equal(s.get(n.id)?.deleted, false);
+  assert.equal((s.get(n.id) as typeof n).view, "document");
+  assert.deepEqual(s.get(own.id), expectedOwn);
+  assert.deepEqual(s.get(c.id), expectedEdit);
+  assert.deepEqual(s.get(f.id), expectedFolder);
+  assert.equal(s.get(removed.id)?.deleted, true);
+  assert.throws(() => undoImport(s, oldId));
+  undoImport(s, nextId);
+  assert.equal(s.get(fresh.id)?.deleted, true);
+  assert.equal(s.get(a.id)?.deleted, false);
+  assert.equal((s.get(a.id) as typeof a).html, "<p>Eerste</p>");
+  assert.equal(s.get(b.id)?.deleted, false);
+  assert.deepEqual(s.get(c.id), expectedEdit);
+  assert.deepEqual(s.get(own.id), expectedOwn);
+  assert.equal(importRecords(s).find((r) => r.id === oldId)?.replacedBy, null);
+  s.close();
+});
+
+test("replacement rechecks edits after preview, and its undo preserves later edits", async () => {
+  const { replaceImport, previewReplacement } =
+    await import("../server/imports.ts");
+  const s = new Store(":memory:");
+  const oldId = crypto.randomUUID(),
+    nextId = crypto.randomUUID();
+  const n = {
+      ...newNote("BIO"),
+      source: {
+        app: "apple-notes" as const,
+        id: crypto.randomUUID(),
+        importId: oldId,
+      },
+    },
+    n2 = {
+      ...newNote("Tweede"),
+      source: {
+        app: "apple-notes" as const,
+        id: crypto.randomUUID(),
+        importId: oldId,
+      },
+    };
+  const b = newBlock(n.id, "Bron", "text"),
+    b2 = newBlock(n2.id, "Bron 2", "text");
+  applyImport(s, {
+    id: oldId,
+    label: "Bron",
+    source: "apple-notes",
+    entities: [n, n2, b, b2],
+    warnings: [],
+  });
+  const fresh = newBlock(n.id, "Nieuw", "text"),
+    fresh2 = newBlock(n2.id, "Nieuw 2", "text");
+  const plan = {
+    id: nextId,
+    label: "Nieuw",
+    source: "apple-notes" as const,
+    entities: [n, n2].map((n) => ({
+      ...n,
+      source: { ...n.source, importId: nextId },
+    })) as Entity[],
+    warnings: [],
+  };
+  plan.entities.push(fresh, fresh2);
+  assert.equal(previewReplacement(s, oldId, plan).replacedNotes, 2);
+  s.saveEntities([
+    { ...(s.get(b.id) as typeof b), html: "Tijdens voorbereiding aangepast" },
+  ]);
+  replaceImport(s, oldId, plan);
+  assert.equal(s.get(fresh.id), undefined);
+  assert.equal(
+    (s.get(b.id) as typeof b).html,
+    "Tijdens voorbereiding aangepast",
+  );
+  s.saveEntities([
+    { ...(s.get(fresh2.id) as typeof fresh2), html: "Na import aangepast" },
+  ]);
+  undoImport(s, nextId);
+  assert.equal((s.get(fresh2.id) as typeof fresh2).html, "Na import aangepast");
+  assert.equal(s.get(fresh2.id)?.deleted, false);
+  assert.equal(s.get(b2.id)?.deleted, true);
   s.close();
 });

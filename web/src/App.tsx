@@ -44,12 +44,16 @@ import {
   blocksOf,
   repositionBlock,
   archived,
+  reusable,
   cloneNote,
+  headings,
   base,
   text,
 } from "../../shared/model";
 import { Imports } from "./Imports";
 import { SortableBlocks } from "./SortableBlocks";
+import { NoteNavigator } from "./NoteNavigator";
+import { DOMSerializer } from "@tiptap/pm/model";
 import * as store from "./store";
 import { BlockRow, localDate } from "./BlockRow";
 const nav = [
@@ -83,6 +87,7 @@ export function App() {
   const [newDialog, setNewDialog] = useState(false);
   const [title, setTitle] = useState("");
   const [isReusable, setReusable] = useState(false);
+  const [newView, setNewView] = useState<Note["view"]>("document");
   const [focusId, setFocus] = useState("");
   const [rowLimit, setRowLimit] = useState(100);
   useEffect(() => setRowLimit(100), [view, selected, query]);
@@ -121,7 +126,7 @@ export function App() {
   const alive = entities.filter((e) => !e.deleted);
   const notes = alive
     .filter((e): e is Note => e.type === "note")
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    .sort((a, b) => a.title.localeCompare(b.title, "nl"));
   const folders = alive
     .filter((e): e is Folder => e.type === "folder")
     .sort((a, b) => a.name.localeCompare(b.name, "nl"));
@@ -131,6 +136,9 @@ export function App() {
     return parent ? folderPath(parent) + " / " + f.name : f.name;
   };
   const note = notes.find((n) => n.id === selected);
+  const noteFolder = folders.find((f) => f.id === note?.folderId);
+  const browse = view === "notes" || view === "icloud" || !!folder;
+  const documentMode = note?.view === "document";
   const pointAlive = (b: Block) =>
     !b.deleted && (!b.noteId || notes.some((n) => n.id === b.noteId));
   const points = entities.filter(
@@ -180,7 +188,8 @@ export function App() {
   const counts = {
     inbox: points.filter((b) => !b.noteId && !archived(b, entities)).length,
     notes: notes.length,
-    reminders: points.filter((b) => b.kind === "task" && !b.done).length,
+    reminders: points.filter((b) => b.kind === "task" && !b.done && !!b.dueAt)
+      .length,
     archive: points.filter((b) => archived(b, entities)).length,
   };
   let rows: Block[] = note
@@ -201,7 +210,7 @@ export function App() {
                     ?.tags.includes(view.slice(4))),
             )
           : points
-              .filter((b) => b.kind === "task" && !b.done)
+              .filter((b) => b.kind === "task" && !b.done && !!b.dueAt)
               .sort((a, b) =>
                 (a.dueAt ?? "9999").localeCompare(b.dueAt ?? "9999"),
               );
@@ -250,6 +259,7 @@ export function App() {
         b.kind === "heading" || b.kind === "subheading" ? "text" : b.kind,
       ),
       indent: b.indent,
+      reusable: b.reusable,
       position: next ? (b.position + next.position) / 2 : b.position + 1000,
     };
     save([created]);
@@ -311,7 +321,10 @@ export function App() {
   }
   function create(event: FormEvent) {
     event.preventDefault();
-    const n = newNote(title.trim() || "Nieuwe notitie", isReusable);
+    const n = {
+      ...newNote(title.trim() || "Nieuwe notitie", isReusable),
+      view: newView,
+    };
     if (folder) n.folderId = folder.id;
     if (view.startsWith("tag:")) n.tags = [view.slice(4)];
     const b = newBlock(n.id, "", "text");
@@ -346,7 +359,70 @@ export function App() {
   }
   function format(kind: Block["kind"]) {
     const b = entities.find((e) => e.id === active?.id);
-    if (b?.type === "block") save([{ ...b, kind }]);
+    if (b?.type !== "block" || !active) return;
+    if (documentMode && b.kind === "text") {
+      const editor = active.editor;
+      if (kind === "heading" || kind === "subheading") {
+        editor
+          .chain()
+          .focus()
+          .toggleHeading({ level: kind === "heading" ? 1 : 2 })
+          .run();
+        return;
+      }
+      if (kind === "text") {
+        editor.chain().focus().setParagraph().run();
+        return;
+      }
+      if (kind === "bullet") {
+        editor.chain().focus().toggleBulletList().run();
+        return;
+      }
+      if (kind === "task") {
+        // Turn just the cursor's paragraph into a real checkbox; keep surrounding prose.
+        const doc = editor.state.doc,
+          index = editor.state.selection.$from.index(0);
+        const node = doc.child(index);
+        if (!["paragraph", "heading"].includes(node.type.name)) {
+          notify("Kies een tekstalinea om er een afvinkpunt van te maken.");
+          return;
+        }
+        const html = (from: number, to: number) => {
+          const box = document.createElement("div");
+          for (let i = from; i < to; i++)
+            box.appendChild(
+              DOMSerializer.fromSchema(editor.schema).serializeNode(
+                doc.child(i),
+              ),
+            );
+          return box.innerHTML;
+        };
+        const siblings = blocksOf(entities, b.noteId),
+          next = siblings[siblings.findIndex((s) => s.id === b.id) + 1];
+        const gap = next ? (next.position - b.position) / 4 : 1000;
+        const before = html(0, index),
+          selectedHtml = html(index, index + 1),
+          after = html(index + 1, doc.childCount);
+        const task = {
+          ...newBlock(b.noteId, selectedHtml, "task"),
+          position: before ? b.position + gap : b.position,
+          reusable: true,
+        };
+        const changes: Entity[] = [
+          { ...b, html: before, deleted: !before },
+          task,
+        ];
+        if (after)
+          changes.push({
+            ...newBlock(b.noteId, after, "text"),
+            position: task.position + gap,
+          });
+        save(changes);
+        setFocus(task.id);
+        return;
+      }
+    }
+    save([{ ...b, kind }]);
   }
   async function notifications() {
     try {
@@ -609,59 +685,18 @@ export function App() {
               </span>
             )}
           </div>
-          <div className="sidebar-label">
-            MAPPEN
-            <button
-              className="icon-button"
-              aria-label="Map toevoegen"
-              onClick={() => {
-                const name = prompt("Naam van nieuwe map")?.trim();
-                if (name) save([newFolder(name, folder?.id ?? null)]);
-              }}
-            >
-              <Plus size={15} />
-            </button>
-          </div>
-          <div className="folder-nav">
-            {folders.map((f) => (
-              <button
-                key={f.id}
-                className={
-                  folder?.id === f.id ? "note-link selected" : "note-link"
-                }
-                onClick={() => go("folder:" + f.id)}
-              >
-                <NotebookPen size={14} />
-                <span>{folderPath(f)}</span>
-                <small>{notes.filter((n) => n.folderId === f.id).length}</small>
-              </button>
-            ))}
-          </div>
-          <div className="sidebar-label">
-            JE NOTITIES
-            <button
-              className="icon-button"
-              aria-label="Notitie toevoegen"
-              onClick={() => setNewDialog(true)}
-            >
-              <Plus size={15} />
-            </button>
-          </div>
-          <div className="note-nav">
-            {notes.slice(0, 12).map((n) => (
-              <button
-                key={n.id}
-                className={
-                  note?.id === n.id ? "note-link selected" : "note-link"
-                }
-                onClick={() => go("notes", n.id)}
-              >
-                <NotebookPen size={14} />
-                <span>{n.title || "Zonder titel"}</span>
-                {n.reusable && <RotateCcw size={12} />}
-              </button>
-            ))}
-          </div>
+          <NoteNavigator
+            notes={notes}
+            folders={folders}
+            selected={note?.id}
+            folderId={folder?.id}
+            go={go}
+            addNote={() => setNewDialog(true)}
+            addFolder={() => {
+              const name = prompt("Naam van nieuwe map")?.trim();
+              if (name) save([newFolder(name, folder?.id ?? null)]);
+            }}
+          />
         </div>
         <div className="sidebar-bottom">
           <button className="new-note" onClick={() => setNewDialog(true)}>
@@ -695,14 +730,22 @@ export function App() {
             >
               <Menu size={20} />
             </button>
-            <span>Mijn geheugen</span>
+            <span>
+              {noteFolder
+                ? folderPath(noteFolder)
+                : view === "icloud"
+                  ? "iCloud"
+                  : "Mijn geheugen"}
+            </span>
             <ChevronRight size={13} />
             <strong>
               {note?.title ??
                 folder?.name ??
                 (view.startsWith("tag:")
                   ? "#" + view.slice(4)
-                  : nav.find((n) => n.id === view)?.title)}
+                  : view === "icloud"
+                    ? "Alle iCloud-notities"
+                    : nav.find((n) => n.id === view)?.title)}
             </strong>
           </div>
           <button
@@ -911,15 +954,19 @@ export function App() {
                       {view.startsWith("tag:")
                         ? "#" + view.slice(4)
                         : (folder?.name ??
-                          nav.find((n) => n.id === view)?.title)}
+                          (view === "icloud"
+                            ? "Alle iCloud-notities"
+                            : nav.find((n) => n.id === view)?.title))}
                       <span>.</span>
                     </h1>
                   )}
                   <p className="subtitle">
                     {note
-                      ? note.reusable
-                        ? "Een herbruikbaar blad. Vink af, reset en gebruik opnieuw."
-                        : "Gedachten, beelden en actiepunten op één blad."
+                      ? documentMode
+                        ? "Tekst, beelden en lijstjes op één pagina."
+                        : note.reusable
+                          ? "Een herbruikbaar blad. Vink af, reset en gebruik opnieuw."
+                          : "Gedachten, beelden en actiepunten op één blad."
                       : view === "inbox"
                         ? "Zet het hier neer. Geef het later een plek."
                         : view === "notes"
@@ -931,7 +978,7 @@ export function App() {
                               : "Alles wat nog aandacht vraagt, op datum gesorteerd."}
                   </p>
                 </div>
-                {!note && (view === "notes" || !!folder) && (
+                {!note && browse && (
                   <button
                     className="primary small"
                     onClick={() => setNewDialog(true)}
@@ -1021,7 +1068,7 @@ export function App() {
                           save([{ ...note, reusable: e.target.checked }])
                         }
                       />
-                      Herbruikbaar
+                      Afvinkpunten herbruikbaar
                     </label>
                     <select
                       aria-label="Weergave van notitie"
@@ -1137,15 +1184,16 @@ export function App() {
                   </div>
                 </form>
               )}
-              {(((view === "notes" || !!folder) && !note) ||
-                (view.startsWith("tag:") && !note)) && (
+              {((browse && !note) || (view.startsWith("tag:") && !note)) && (
                 <div className="note-grid">
                   {notes
                     .filter((n) =>
                       folder
                         ? n.folderId === folder.id
-                        : !view.startsWith("tag:") ||
-                          n.tags.includes(view.slice(4)),
+                        : view === "icloud"
+                          ? n.source?.app === "apple-notes"
+                          : !view.startsWith("tag:") ||
+                            n.tags.includes(view.slice(4)),
                     )
                     .map((n) => {
                       const bs = blocksOf(entities, n.id);
@@ -1192,7 +1240,7 @@ export function App() {
                         </button>
                       );
                     })}
-                  {(view === "notes" || !!folder) && (
+                  {browse && (
                     <button
                       className="note-card create-card"
                       onClick={() => setNewDialog(true)}
@@ -1203,11 +1251,11 @@ export function App() {
                   )}
                 </div>
               )}
-              {((view !== "notes" && !folder) || !!note) && (
+              {(!browse || !!note) && (
                 <div
-                  className={`document ${note?.view === "tasks" ? "compact" : ""}`}
+                  className={`document ${note?.view === "tasks" ? "compact" : documentMode ? "prose-document" : ""}`}
                 >
-                  {rows.length > 0 && (
+                  {rows.length > 0 && !documentMode && (
                     <div className="list-heading">
                       <span>
                         {note
@@ -1224,21 +1272,58 @@ export function App() {
                     </div>
                   )}
                   {note && (
+                    <details className="document-contents" key={note.id}>
+                      <summary>Inhoud van deze notitie</summary>
+                      {headings(rows).map((h, i) => (
+                        <button
+                          key={`${h.id}:${i}`}
+                          onClick={() => {
+                            setRowLimit(rows.length);
+                            requestAnimationFrame(() => {
+                              const container = document.getElementById(
+                                `point-${h.id}`,
+                              );
+                              const heading = [
+                                ...(container?.querySelectorAll(
+                                  "h1,h2,h3,h4,h5,h6",
+                                ) ?? []),
+                              ].find(
+                                (el) => el.textContent?.trim() === h.title,
+                              );
+                              (heading ?? container)?.scrollIntoView({
+                                block: "start",
+                                behavior: "smooth",
+                              });
+                            });
+                          }}
+                        >
+                          {h.title}
+                        </button>
+                      ))}
+                      {!headings(rows).length && (
+                        <small>Voeg een kopje toe met H1 of H2.</small>
+                      )}
+                    </details>
+                  )}
+                  {note && (
                     <div className="formatbar">
                       <button
                         aria-label="Titelopmaak"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => format("heading")}
                       >
                         H1
                       </button>
                       <button
                         aria-label="Subkopopmaak"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => format("subheading")}
                       >
                         H2
                       </button>
                       <button
                         aria-label="Hoofdtekst"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => format("text")}
                       >
                         Aa
@@ -1265,12 +1350,14 @@ export function App() {
                       <i />
                       <button
                         aria-label="Opsomming"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => format("bullet")}
                       >
                         <List size={17} />
                       </button>
                       <button
                         aria-label="Afvinklijst"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => format("task")}
                       >
                         <CheckSquare size={16} />
@@ -1479,6 +1566,43 @@ export function App() {
                   >
                     {(b, dragHandle) => (
                       <>
+                        {documentMode &&
+                          b.kind === "task" &&
+                          reusable(b, entities) &&
+                          (() => {
+                            const index = rows.findIndex((p) => p.id === b.id),
+                              previous = rows[index - 1];
+                            if (
+                              previous?.kind === "task" &&
+                              reusable(previous, entities)
+                            )
+                              return null;
+                            const group: Block[] = [];
+                            for (const item of rows.slice(index)) {
+                              if (
+                                item.kind !== "task" ||
+                                !reusable(item, entities)
+                              )
+                                break;
+                              group.push(item);
+                            }
+                            return (
+                              <div className="checklist-heading">
+                                <span>Herbruikbare afvinklijst</span>
+                                <button
+                                  onClick={() =>
+                                    save(
+                                      group
+                                        .filter((p) => p.done)
+                                        .map((p) => ({ ...p, done: false })),
+                                    )
+                                  }
+                                >
+                                  Opnieuw gebruiken
+                                </button>
+                              </div>
+                            );
+                          })()}
                         {!note && b.noteId && (
                           <button
                             className="point-source"
@@ -1490,6 +1614,7 @@ export function App() {
                         )}
                         <BlockRow
                           block={b}
+                          documentMode={!!documentMode}
                           dragHandle={dragHandle}
                           entities={entities}
                           notes={notes}
@@ -1550,7 +1675,7 @@ export function App() {
                       }}
                     >
                       <Plus size={16} />
-                      Een regel toevoegen
+                      {documentMode ? "Tekst toevoegen" : "Een regel toevoegen"}
                     </button>
                   )}
                 </div>
@@ -1666,6 +1791,17 @@ export function App() {
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Waar wil je ruimte voor maken?"
                 />
+              </label>
+              <label>
+                Weergave
+                <select
+                  aria-label="Weergave van nieuwe notitie"
+                  value={newView}
+                  onChange={(e) => setNewView(e.target.value as Note["view"])}
+                >
+                  <option value="document">Tekstpagina met lijstjes</option>
+                  <option value="tasks">Compacte lijst</option>
+                </select>
               </label>
               <label className="choice">
                 <input

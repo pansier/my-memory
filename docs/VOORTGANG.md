@@ -39,3 +39,11 @@ De planner gebruikt in de automatische tests een vervangende sender: er worden g
 ## Nog te doen bij deployment
 
 Het voorlopige productieadres is `https://memory.pansier.nl`. De nieuwe TransIP-VPS is `alexpansier-vps3` op `37.97.228.211`. Een installatie-script voor uitvoering vanaf de Mac staat klaar; de cloudomgeving kan geen publieke SSH-verbinding maken. Nog nodig: het DNS-record `memory` naar die VPS laten wijzen, de installatie uitvoeren en HTTPS controleren, de MCP-server vanuit het echte ChatGPT/Codex-account verbinden en webpush op de echte iPhone/Mac met gesloten app controleren. Alex voegt de snelkoppelingen zelf toe. Stap 19/20 en de externe controles voor 14/17 zijn daarom niet volledig afgerond; GitHub-issues zijn niet automatisch gesloten.
+
+## Verbeterde Apple Notities — 6 oktober 2026
+
+Na beoordeling van een visueel voorstel: volledige mappenboom met alfabetische notities en een iCloud-totaaloverzicht; doorlopende, native bewerkbare tekstpagina’s met kopjes/opsommingen en afzonderlijke herbruikbare afvinkpunten. Enter maakt in tekst een alinea; een alinea kan een afvinkpunt worden. Herinneringen bevat uitsluitend expliciet geplande punten. Eerdere drag-, offline-, account-, opmaak- en statusbalkfuncties blijven behouden.
+
+De bestaande privé-export is opnieuw voorbereid: 192 notities, zes mappen, 3.342 checkboxen (1.512 aangevinkt), 348 unieke bijlagen. Alle checkboxinhoud, vinkjes en inspringingen zijn exact vergeleken; alle bijlage-ID’s zijn gelijk. Het plan heeft 4.162 bewerkbare onderdelen, tegenover 7.053 losse rijen in de oorspronkelijke import.
+
+MCP kan nu een import atomair vervangen en terugdraaien. Onafhankelijke wijzigingen en eigen notities zijn beschermd; terugdraaien herstelt oude inhoud met nieuwe versies en behoudt later gewijzigd werk. Verificatie: 24 model-/API-/MCP-tests en 20 browserflows slagen, inclusief daadwerkelijke MCP-bulkactie, herstel, native alinea’s, kopjes, lijstjes en checklistreset. Deze technische controle emuleert het iPhone-scherm; fysieke iOS/Safari-controle blijft apart.

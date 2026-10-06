@@ -208,3 +208,72 @@ test("Streamable HTTP MCP requires bearer and handles actual SDK initialization 
     s.close();
   }
 });
+
+test("MCP bulk replacement and undo use the real protocol and preserve unrelated notes", async () => {
+  const store = new Store(":memory:");
+  const other = newNote("Eigen notitie");
+  store.saveEntities([other]);
+  const oldId = crypto.randomUUID(),
+    newId = crypto.randomUUID();
+  const note = {
+    ...newNote("BIO"),
+    source: {
+      app: "apple-notes" as const,
+      id: crypto.randomUUID(),
+      importId: oldId,
+    },
+  };
+  const source = newBlock(note.id, "<p>Eerste</p>", "text");
+  const server = makeMcp(store),
+    client = new Client({ name: "import-test", version: "1" });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  await server.connect(a);
+  await client.connect(b);
+  const call = async (name: string, args: any) => {
+    const result = await client.callTool({ name, arguments: args });
+    assert.equal(result.isError, undefined);
+    return JSON.parse((result.content as { text: string }[])[0].text);
+  };
+  try {
+    await call("import_notes", {
+      plan: {
+        id: oldId,
+        label: "Apple",
+        source: "apple-notes",
+        entities: [note, source],
+      },
+    });
+    const replacement = {
+      id: newId,
+      label: "Document",
+      source: "apple-notes",
+      entities: [
+        {
+          ...note,
+          source: { ...note.source, importId: newId },
+          view: "document",
+        },
+        newBlock(note.id, "<p>Eerste</p><p>Tweede</p>", "text"),
+      ],
+    };
+    const args = { previousImportId: oldId, plan: replacement };
+    assert.equal(
+      (await call("preview_import_replacement", args)).replacedNotes,
+      1,
+    );
+    await call("replace_import", args);
+    assert.equal(store.get(source.id)?.deleted, true);
+    assert.equal(store.get(other.id)?.deleted, false);
+    assert.equal(
+      (await call("preview_import_undo", { importId: newId })).removableNotes,
+      1,
+    );
+    await call("undo_import", { importId: newId });
+    assert.equal(store.get(source.id)?.deleted, false);
+    assert.equal(store.get(other.id)?.version, 1);
+  } finally {
+    await client.close();
+    await server.close();
+    store.close();
+  }
+});

@@ -38,7 +38,7 @@ const uuid = (key: string) => {
   const h = b.toString("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 };
-const importId = uuid("2026-10-06"),
+const importId = uuid("2026-10-06:documents-v2"),
   entities: Entity[] = [],
   files: {
     id: string;
@@ -101,7 +101,7 @@ for (const source of sources) {
   ) => {
     const b = {
       ...newBlock(note.id, cleanHtml(html), kind),
-      id: uuid(`block:${source.sourceId}:${++position}`),
+      id: uuid(`document-v2:${source.sourceId}:${++position}`),
       position: position * 1000,
       indent: Math.min(indent, 6),
       done,
@@ -185,11 +185,39 @@ for (const source of sources) {
     });
     return { html, imageIds, attachments };
   };
+  // Keep native paragraphs, headings, tables and ordinary lists together.
+  // Only actual checkboxes and attachments need independent point controls.
+  let prose = "";
+  const flush = () => {
+    if (prose.trim()) add(prose);
+    prose = "";
+  };
+  const append = (html: string) => {
+    if (prose.length + html.length > 90000) flush();
+    prose += html;
+  };
+  const hasChecks = (ts: Token[]): boolean =>
+    ts.some(
+      (t) =>
+        t.type === "list" &&
+        (t as Tokens.List).items.some(
+          (i) =>
+            i.task || /^\[([ xX])\]\s*$/.test(i.text) || hasChecks(i.tokens),
+        ),
+    );
   const walk = (ts: Token[], indent = 0) => {
     for (const token of ts) {
       if (token.type === "space") continue;
       if (token.type === "list") {
         const list = token as Tokens.List;
+        if (!hasChecks([token])) {
+          const r = render([token]);
+          if (r.imageIds.length || r.attachments.length) {
+            flush();
+            add(r.html, "text", indent, false, r.imageIds, r.attachments);
+          } else append(r.html);
+          continue;
+        }
         let ordinal = typeof list.start === "number" ? list.start : 1;
         for (const item of list.items) {
           // Marked does not classify a checkbox with no label as a task.
@@ -210,6 +238,7 @@ for (const source of sources) {
                 : "bullet";
           if (list.ordered && !item.task)
             html = `<ol start="${ordinal++}"><li>${html}</li></ol>`;
+          flush();
           add(html, kind, indent, !!item.checked, r.imageIds, r.attachments);
           walk(
             item.tokens.filter((t) => t.type === "list"),
@@ -218,11 +247,15 @@ for (const source of sources) {
         }
       } else {
         const r = render([token]);
-        add(r.html, "text", indent, false, r.imageIds, r.attachments);
+        if (r.imageIds.length || r.attachments.length) {
+          flush();
+          add(r.html, "text", indent, false, r.imageIds, r.attachments);
+        } else append(r.html);
       }
     }
   };
   walk(tokens);
+  flush();
   if (!markdown.trim())
     warnings.push(
       `“${title}” (${source.folder}) is leeg in de Apple-export; alleen de titel is beschikbaar.`,
@@ -232,7 +265,7 @@ warnings.push("PASPOORT / ID (Privé) is vergrendeld en niet geïmporteerd.");
 mkdirSync(destination, { recursive: true, mode: 0o700 });
 const plan = {
   id: importId,
-  label: "Apple Notities · 6 oktober 2026",
+  label: "Apple Notities · tekstpagina’s · 6 oktober 2026",
   source: "apple-notes",
   entities,
   warnings,

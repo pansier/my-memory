@@ -8,6 +8,8 @@ type Entry = {
   notes: number;
   folders: number;
   warnings: string[];
+  replacedBy?: string | null;
+  replacement?: boolean;
 };
 export function Imports({
   onError,
@@ -43,7 +45,7 @@ export function Imports({
       const p = await r.json();
       if (
         !confirm(
-          `${entry.label} terugdraaien?\n${p.removableNotes} geïmporteerde notities worden verwijderd. ${p.preservedNotes} gewijzigde notities blijven bewaard.\nJe andere notities, taken en Apple Notities blijven behouden.`,
+          `${entry.label} terugdraaien?\n${p.removableNotes} notities worden ${entry.replacement ? "hersteld naar vóór de vervanging" : "verwijderd"}. ${p.preservedNotes} gewijzigde notities blijven bewaard.\nJe andere notities, taken en Apple Notities blijven behouden.`,
         )
       )
         return;
@@ -69,8 +71,9 @@ export function Imports({
     <section className="import-history">
       <h3>Imports</h3>
       <p>
-        Terugdraaien verwijdert alleen deze import. Notities die je daarna zelf
-        hebt gewijzigd blijven bewaard.
+        Terugdraaien raakt alleen deze import. Bij een vervanging worden de
+        vorige pagina’s hersteld. Notities die je daarna zelf hebt gewijzigd
+        blijven bewaard.
       </p>
       {!entries.length ? (
         <small>Nog geen imports.</small>
@@ -92,7 +95,9 @@ export function Imports({
                 </ul>
               </details>
             )}
-            {e.undoneAt ? (
+            {e.replacedBy ? (
+              <small>Vervangen door de verbeterde import hieronder.</small>
+            ) : e.undoneAt ? (
               <small>
                 Teruggedraaid op{" "}
                 {new Date(e.undoneAt).toLocaleDateString("nl-NL")}

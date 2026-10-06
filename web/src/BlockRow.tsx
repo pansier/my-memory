@@ -105,8 +105,10 @@ export function BlockRow({
   onEnter,
   onError,
   dragHandle,
+  documentMode = false,
 }: {
   block: Block;
+  documentMode?: boolean;
   dragHandle?: DragHandle;
   notes: Note[];
   entities: Entity[];
@@ -115,8 +117,8 @@ export function BlockRow({
   onEnter: (block: Block) => void;
   onError: (s: string) => void;
 }) {
-  const current = useRef({ block, onFocus, onEnter });
-  current.current = { block, onFocus, onEnter };
+  const current = useRef({ block, onFocus, onEnter, documentMode });
+  current.current = { block, onFocus, onEnter, documentMode };
   const [options, setOptions] = useState(false);
   const [draft, setDraft] = useState(block.html);
   const save = (patch: Partial<Block>) => {
@@ -161,6 +163,11 @@ export function BlockRow({
         attributes: { "aria-label": "Inhoud van punt", role: "textbox" },
         handleKeyDown: (_view, event) => {
           if (
+            current.current.documentMode &&
+            current.current.block.kind === "text"
+          )
+            return false;
+          if (
             editor?.isActive("table") ||
             editor?.isActive("codeBlock") ||
             editor?.isActive("listItem") ||
@@ -201,11 +208,14 @@ export function BlockRow({
         },
       },
       onUpdate: ({ editor }) => {
+        current.current.onFocus(editor, current.current.block);
         const html = editor.getHTML();
         setDraft(html);
         save({ html });
       },
       onFocus: ({ editor }) =>
+        current.current.onFocus(editor, current.current.block),
+      onSelectionUpdate: ({ editor }) =>
         current.current.onFocus(editor, current.current.block),
     },
     [block.id],
@@ -222,7 +232,7 @@ export function BlockRow({
   const isReusable = reusable(block, entities);
   return (
     <div
-      className={`block-row kind-${block.kind} ${block.done ? "is-done" : ""}`}
+      className={`block-row kind-${block.kind} ${documentMode ? "document-part" : ""} ${block.done ? "is-done" : ""}`}
       style={{ marginLeft: block.indent * 20 }}
     >
       {dragHandle && (

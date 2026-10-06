@@ -1652,3 +1652,112 @@ nav {
     transition: none !important;
   }
 }
+
+/* A document flows like a page; checklist points remain interactive. */
+.prose-document .document-part {
+  border-bottom: 0;
+  padding: 5px 3px;
+  min-height: 0;
+}
+.prose-document .kind-text .block-gutter {
+  display: none;
+}
+.prose-document .kind-text .ProseMirror p {
+  margin: 0 0 1em;
+}
+.prose-document .kind-text .ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+.prose-document .kind-text .ProseMirror h1,
+.prose-document .kind-text .ProseMirror h2,
+.prose-document .kind-text .ProseMirror h3 {
+  margin: 1em 0 0.6em;
+}
+.prose-document .kind-text .ProseMirror > :first-child {
+  margin-top: 0;
+}
+.prose-document .kind-task {
+  padding-block: 7px;
+}
+.prose-document .row-options {
+  opacity: 0;
+}
+.prose-document .block-row:hover .row-options,
+.prose-document .block-row:focus-within .row-options {
+  opacity: 1;
+}
+.document-contents {
+  padding: 10px 0;
+  margin-bottom: 12px;
+  color: var(--muted);
+}
+.document-contents button {
+  display: block;
+  padding: 6px 12px;
+  text-align: left;
+  color: var(--green);
+}
+.document-contents summary {
+  cursor: pointer;
+}
+.folder-heading {
+  display: flex;
+  align-items: center;
+}
+.folder-heading > .note-link {
+  flex: 1;
+  min-width: 0;
+}
+.folder-toggle {
+  flex-shrink: 0;
+  width: 23px;
+}
+.folder-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.folder-children {
+  padding-left: 15px;
+  border-left: 1px solid var(--border);
+  margin-left: 10px;
+}
+.folder-children .note-link {
+  font-size: 13px;
+  padding-block: 8px;
+}
+.folder-nav .note-link span {
+  overflow-wrap: anywhere;
+}
+.icloud-nav .note-link {
+  width: 100%;
+}
+.icloud-nav small {
+  margin-left: auto;
+}
+@media (pointer: coarse) {
+  .prose-document .row-options {
+    opacity: 1;
+  }
+  .folder-toggle {
+    min-width: 32px;
+    min-height: 44px;
+  }
+  .folder-children .note-link {
+    min-height: 44px;
+  }
+}
+.checklist-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 3px 7px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.checklist-heading button {
+  border: 1px solid var(--border);
+  padding: 5px 9px;
+  border-radius: 5px;
+  color: var(--green);
+}

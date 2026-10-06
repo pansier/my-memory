@@ -150,15 +150,13 @@ test("planner sends once, cancels outdated schedules and retries with same dedup
       dueAt: "2026-10-06T09:00:00.000Z",
     };
     s.saveEntities([b]);
-    s.db
-      .prepare("INSERT INTO subscriptions VALUES(?,?)")
-      .run(
-        "device",
-        JSON.stringify({
-          endpoint: "https://web.push.apple.com/test",
-          keys: { auth: "a", p256dh: "b" },
-        }),
-      );
+    s.db.prepare("INSERT INTO subscriptions VALUES(?,?)").run(
+      "device",
+      JSON.stringify({
+        endpoint: "https://web.push.apple.com/test",
+        keys: { auth: "a", p256dh: "b" },
+      }),
+    );
     let count = 0;
     const clock = Date.parse("2026-10-06T10:00:00Z");
     await tick(
@@ -299,4 +297,28 @@ test("reordering preserves hidden points, content and schedules, and handles equ
     [order[1].id, order[0].id, order[2].id],
   );
   assert.equal(new Set(normalized.map((x) => x.position)).size, 3);
+});
+
+test("MCP finds each native document heading and inserts in its section without losing surrounding prose", () => {
+  const n = newNote("Document");
+  const prose = {
+    ...newBlock(
+      n.id,
+      "<h2>TIPS</h2><p>Eerste alinea.</p><ul><li>Idee</li></ul><h2>DEADLINE</h2><p>Later.</p>",
+      "text",
+    ),
+    position: 1000,
+  };
+  const item = newBlock(n.id, "<p>Nieuw punt</p>", "task");
+  const result = insertUnderHeading([prose], "TIPS", item);
+  assert.equal(result.needsClarification, false);
+  if (!result.needsClarification) {
+    assert.equal(
+      result.edits?.[0].html,
+      "<h2>TIPS</h2><p>Eerste alinea.</p><ul><li>Idee</li></ul>",
+    );
+    assert.equal(result.edits?.[1].html, "<h2>DEADLINE</h2><p>Later.</p>");
+    assert.ok(result.edits![0].position < result.block.position);
+    assert.ok(result.block.position < result.edits![1].position);
+  }
 });

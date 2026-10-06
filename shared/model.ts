@@ -164,15 +164,21 @@ export function cloneNote(note: Note, entities: Entity[]) {
   ] as Entity[];
 }
 export function headings(blocks: Block[]) {
-  return blocks
-    .filter(
-      (b) =>
-        b.kind === "heading" ||
-        b.kind === "subheading" ||
-        /^<h[1-6][ >]/.test(b.html) ||
-        /^<p><strong>.*<\/strong><\/p>$/.test(b.html),
-    )
-    .map((b) => ({ id: b.id, title: text(b.html), indent: b.indent }));
+  return blocks.flatMap((b) => {
+    const hs = [...b.html.matchAll(/<h[1-6](?:\s[^>]*)?>[\s\S]*?<\/h[1-6]>/gi)];
+    if (hs.length)
+      return hs.map((h) => ({
+        id: b.id,
+        title: text(h[0]),
+        indent: b.indent,
+        start: h.index,
+      }));
+    return b.kind === "heading" ||
+      b.kind === "subheading" ||
+      /^<p><strong>.*<\/strong><\/p>$/.test(b.html)
+      ? [{ id: b.id, title: text(b.html), indent: b.indent, start: 0 }]
+      : [];
+  });
 }
 export function insertUnderHeading(
   blocks: Block[],
@@ -193,6 +199,33 @@ export function insertUnderHeading(
     };
   const heading = matches[0];
   const index = blocks.findIndex((b) => b.id === heading.id);
+  const nextInSameBlock = hs.find(
+    (h) => h.id === heading.id && h.start > heading.start,
+  );
+  if (nextInSameBlock) {
+    const source = blocks[index],
+      after = blocks[index + 1]?.position;
+    const gap = after === undefined ? 1000 : (after - source.position) / 3;
+    return {
+      needsClarification: false as const,
+      block: {
+        ...block,
+        indent: Math.min(6, heading.indent + 1),
+        position: source.position + gap,
+      },
+      edits: [
+        { ...source, html: source.html.slice(0, nextInSameBlock.start) },
+        {
+          ...newBlock(
+            source.noteId,
+            source.html.slice(nextInSameBlock.start),
+            "text",
+          ),
+          position: source.position + 2 * gap,
+        },
+      ],
+    };
+  }
   let end = index + 1;
   while (end < blocks.length && !hs.some((h) => h.id === blocks[end].id)) end++;
   const before = blocks[end - 1].position;

@@ -16,12 +16,20 @@ async function synced(page: Page) {
     .getByRole("button", { name: "Gesynchroniseerd", exact: true })
     .waitFor({ timeout: 20000 });
 }
-async function createNote(page: Page, title: string, reusable = false) {
+async function createNote(
+  page: Page,
+  title: string,
+  reusable = false,
+  document = false,
+) {
   await page
     .getByRole("button", { name: "Nieuwe notitie", exact: true })
     .first()
     .click();
   await page.getByLabel("Titel van nieuwe notitie").fill(title);
+  await page
+    .getByLabel("Weergave van nieuwe notitie")
+    .selectOption(document ? "document" : "tasks");
   if (reusable) await page.getByRole("dialog").getByRole("checkbox").check();
   await page.getByRole("button", { name: "Notitie maken" }).click();
   await expect(page.getByLabel("Notitietitel")).toHaveValue(title);
@@ -214,6 +222,7 @@ test("iPhone viewport has usable navigation and no horizontal overflow", async (
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
+  await page.getByLabel("Datum bij snelle invoer").fill("2027-01-01T10:00");
   await quick(page, "Een mobiele gedachte");
   await page.getByRole("button", { name: "Navigatie openen" }).click();
   await expect(
@@ -568,7 +577,7 @@ test("folders, editable tables and PDF attachments work; import undo is scoped",
     .click();
   await page
     .locator(".folder-nav")
-    .getByRole("button", { name: /Reizen/ })
+    .getByRole("button", { name: /^Reizen/ })
     .click();
   await createNote(page, "Bewerkbare tabel");
   await expect(page.getByLabel("Map van notitie")).not.toHaveValue("");
@@ -583,13 +592,11 @@ test("folders, editable tables and PDF attachments work; import undo is scoped",
     .getByRole("button", { name: "Tabelrij toevoegen", exact: true })
     .click();
   await expect(editor.locator("tr")).toHaveCount(4);
-  await page
-    .getByLabel("Afbeelding aan notitie toevoegen")
-    .setInputFiles({
-      name: "voorbeeld.pdf",
-      mimeType: "application/pdf",
-      buffer: Buffer.from("%PDF-1.4\n%%EOF\n"),
-    });
+  await page.getByLabel("Afbeelding aan notitie toevoegen").setInputFiles({
+    name: "voorbeeld.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4\n%%EOF\n"),
+  });
   await expect(page.getByRole("link", { name: /voorbeeld.pdf/ })).toBeVisible();
   await synced(page);
   const data = await page.evaluate(async () => {
@@ -636,7 +643,7 @@ test("folders, editable tables and PDF attachments work; import undo is scoped",
     .getByRole("button", { name: /Gesynchroniseerd/, exact: true })
     .click();
   await expect(
-    page.locator(".folder-nav").getByRole("button", { name: /Importmap/ }),
+    page.locator(".folder-nav").getByRole("button", { name: /^Importmap/ }),
   ).toBeVisible();
   await page.locator(".account").click();
   page.once("dialog", (d) => d.accept());
@@ -646,10 +653,10 @@ test("folders, editable tables and PDF attachments work; import undo is scoped",
   await expect(page.getByText(/Teruggedraaid op/)).toBeVisible();
   await page.getByRole("button", { name: "Sluiten", exact: true }).click();
   await expect(
-    page.locator(".folder-nav").getByRole("button", { name: /Importmap/ }),
+    page.locator(".folder-nav").getByRole("button", { name: /^Importmap/ }),
   ).toHaveCount(0);
   await expect(
-    page.locator(".folder-nav").getByRole("button", { name: /Reizen/ }),
+    page.locator(".folder-nav").getByRole("button", { name: /^Reizen/ }),
   ).toBeVisible();
 });
 
@@ -671,13 +678,11 @@ test("mobile settings close without leaving a scrim or tinting the status area",
         pointerEvents: style.pointerEvents,
       };
     });
-  await expect
-    .poll(statusArea)
-    .toEqual({
-      background: "rgb(247, 247, 243)",
-      height: "59px",
-      pointerEvents: "none",
-    });
+  await expect.poll(statusArea).toEqual({
+    background: "rgb(247, 247, 243)",
+    height: "59px",
+    pointerEvents: "none",
+  });
   for (const closeWithBackdrop of [false, true]) {
     await page.getByRole("button", { name: "Navigatie openen" }).click();
     await expect(page.locator(".sidebar.open")).toHaveCount(1);
@@ -686,13 +691,11 @@ test("mobile settings close without leaving a scrim or tinting the status area",
       page.getByRole("dialog", { name: "Instellingen" }),
     ).toBeVisible();
     await expect(page.locator(".sidebar-scrim")).toHaveCount(0);
-    await expect
-      .poll(statusArea)
-      .toEqual({
-        background: "rgb(247, 247, 243)",
-        height: "59px",
-        pointerEvents: "none",
-      });
+    await expect.poll(statusArea).toEqual({
+      background: "rgb(247, 247, 243)",
+      height: "59px",
+      pointerEvents: "none",
+    });
     if (closeWithBackdrop)
       await page.locator(".modal-backdrop").click({ position: { x: 3, y: 3 } });
     else
@@ -700,13 +703,11 @@ test("mobile settings close without leaving a scrim or tinting the status area",
     await expect(
       page.locator(".modal-backdrop, .sidebar-scrim, .sidebar.open"),
     ).toHaveCount(0);
-    await expect
-      .poll(statusArea)
-      .toEqual({
-        background: "rgb(247, 247, 243)",
-        height: "59px",
-        pointerEvents: "none",
-      });
+    await expect.poll(statusArea).toEqual({
+      background: "rgb(247, 247, 243)",
+      height: "59px",
+      pointerEvents: "none",
+    });
     expect(
       await page
         .locator(".topbar")
@@ -757,10 +758,14 @@ test("dragging makes room before drop, persists offline and supports keyboard ca
     .poll(async () => (await beta.boundingBox())!.y)
     .toBeLessThan(betaBefore - 20);
   await expect(page.locator(".drag-preview")).toBeVisible();
-  await expect.poll(async () => {
-    const preview = (await page.locator(".drag-preview").boundingBox())!;
-    return Math.abs(preview.y + preview.height / 2 - (end.y + end.height / 2));
-  }).toBeLessThan(60);
+  await expect
+    .poll(async () => {
+      const preview = (await page.locator(".drag-preview").boundingBox())!;
+      return Math.abs(
+        preview.y + preview.height / 2 - (end.y + end.height / 2),
+      );
+    })
+    .toBeLessThan(60);
   await page.screenshot({ path: test.info().outputPath("drag-preview.png") });
   await page.mouse.up();
   const order = () =>
@@ -906,4 +911,113 @@ test("mobile touch handle reorders while the other points make room", async ({
     .poll(order)
     .toEqual(["Touch Gamma", "Touch Alpha", "Touch Beta"]);
   await synced(page);
+});
+
+test("document paragraphs, native lists and mixed reusable checklists can be authored and retained", async ({
+  page,
+}) => {
+  await login(page);
+  await createNote(page, "Doorlopende tekstpagina", false, true);
+  const editor = page.getByRole("textbox", { name: "Inhoud van punt" }).first();
+  await editor.fill("Eerste alinea.");
+  await editor.press("End");
+  await editor.press("Enter");
+  await editor.pressSequentially("Tweede alinea.");
+  await expect(page.locator(".block-row")).toHaveCount(1);
+  await expect(editor.locator("p")).toHaveCount(2);
+  await page.getByRole("button", { name: "Subkopopmaak", exact: true }).click();
+  await expect(editor.locator("h2")).toHaveText("Tweede alinea.");
+  await editor.press("End");
+  await editor.press("Enter");
+  await editor.pressSequentially("Een gewoon lijstpunt");
+  await page.getByRole("button", { name: "Opsomming", exact: true }).click();
+  await expect(editor.locator("ul li")).toHaveText("Een gewoon lijstpunt");
+  await editor.press("End");
+  await editor.press("Enter");
+  await editor.pressSequentially("Nog een gewoon lijstpunt");
+  await expect(editor.locator("ul li")).toHaveCount(2);
+  await editor.press("End");
+  await editor.press("Enter");
+  await editor.press("Enter");
+  await editor.pressSequentially("Camera meenemen");
+  await page.getByRole("button", { name: "Afvinklijst", exact: true }).click();
+  const task = page
+    .locator(".kind-task")
+    .filter({ hasText: "Camera meenemen" });
+  await expect(task).toBeVisible();
+  await task
+    .getByRole("button", { name: "Punt afvinken", exact: true })
+    .click();
+  await expect(task).toHaveClass(/is-done/);
+  await page
+    .getByRole("button", { name: "Opnieuw gebruiken", exact: true })
+    .click();
+  await expect(task).not.toHaveClass(/is-done/);
+  await synced(page);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Doorlopende tekstpagina", exact: true })
+    .click();
+  await expect(page.locator(".prose-document .ProseMirror h2")).toHaveText(
+    "Tweede alinea.",
+  );
+  await expect(page.locator(".prose-document .ProseMirror ul li")).toHaveCount(
+    2,
+  );
+  await expect(
+    page.locator(".kind-task").filter({ hasText: "Camera meenemen" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: /Herinneringen/ })
+    .first()
+    .click();
+  await expect(
+    page.locator(".kind-task").filter({ hasText: "Camera meenemen" }),
+  ).toHaveCount(0);
+});
+
+test("all folder notes are reachable, and only explicitly scheduled points are reminders", async ({
+  page,
+}) => {
+  await login(page);
+  const label = "Fotografie documentmappen";
+  page.once("dialog", (d) => d.accept(label));
+  await page
+    .getByRole("button", { name: "Map toevoegen", exact: true })
+    .click();
+  const folder = page
+    .locator(".folder-nav")
+    .getByRole("button", { name: new RegExp("^" + label) });
+  await folder.click();
+  await createNote(page, "Zeer vindbare BIO", true, true);
+  await quick(page, "Checklist zonder datum");
+  const row = page
+    .locator(".kind-task")
+    .filter({ hasText: "Checklist zonder datum" });
+  await row
+    .getByRole("button", { name: "Opties voor punt", exact: true })
+    .click();
+  await row.getByLabel("Datum en tijd van punt").fill("2027-01-01T10:00");
+  await row
+    .getByRole("button", { name: "Opties sluiten", exact: true })
+    .click();
+  await quick(page, "Tweede ongeplande checklist");
+  await synced(page);
+  await expect(
+    page
+      .locator(".folder-children")
+      .getByRole("button", { name: "Zeer vindbare BIO", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: /Herinneringen/ })
+    .first()
+    .click();
+  await expect(
+    page.locator(".kind-task").filter({ hasText: "Checklist zonder datum" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".kind-task")
+      .filter({ hasText: "Tweede ongeplande checklist" }),
+  ).toHaveCount(0);
 });

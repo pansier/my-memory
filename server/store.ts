@@ -79,7 +79,7 @@ export class Store {
     const r = this.db.prepare("SELECT data FROM entities WHERE id=?").get(id);
     return r ? JSON.parse(String(r.data)) : undefined;
   }
-  mutate(m: Mutation) {
+  mutate(m: Mutation, allowImportRestore = false) {
     const serialized = JSON.stringify(m);
     const old = this.db
       .prepare("SELECT request,result FROM operations WHERE id=?")
@@ -99,7 +99,7 @@ export class Store {
       };
     if (remote && remote.type !== parsed.type)
       throw new Error("Entity type cannot change");
-    if (remote?.deleted && !parsed.deleted)
+    if (remote?.deleted && !parsed.deleted && !allowImportRestore)
       throw new Error("Deleted item cannot be restored; create a copy");
     if (parsed.type === "folder") {
       let parent = parsed.parentId;

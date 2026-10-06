@@ -59,12 +59,51 @@ test("Apple Markdown becomes editable mixed content, preserving headings, checkm
     assert.match(html, /<em>cursieve/);
     assert.match(html, /href="https:\/\/example.com"/);
     assert.match(html, /<table>/);
-    assert.match(html, /<ol start="2">/);
+    assert.match(html, /<ol>\s*<li>Eerste<\/li>\s*<li>Tweede<\/li>/);
     assert.match(html, /&lt;NAAM&gt;/);
     assert.match(html, /&lt;img/);
     assert.ok(blocks.every((b) => b.dueAt === null));
     assert.equal(blocks.flatMap((b) => b.imageIds).length, 1);
     assert.equal(blocks.flatMap((b) => b.attachments ?? []).length, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("prose paragraphs and nested ordinary lists stay in a continuous native document", () => {
+  const root = mkdtempSync(join(tmpdir(), "apple-document-test-"));
+  try {
+    const path = join(root, "BIO.md"),
+      manifest = join(root, "source.json"),
+      out = join(root, "prepared");
+    writeFileSync(
+      path,
+      "# BIO\n\nEerste alinea.\n\nTweede **alinea**.\n\n## Details\n\n- Idee\n  - Onderdeel\n- Ander idee\n\nLaatste alinea.\n",
+    );
+    writeFileSync(
+      manifest,
+      JSON.stringify([
+        { sourceId: crypto.randomUUID(), folder: "Fotografie", path },
+      ]),
+    );
+    execFileSync(
+      process.execPath,
+      ["--import", "tsx", "scripts/prepare-apple-notes.ts", manifest, out],
+      { stdio: "pipe" },
+    );
+    const plan = JSON.parse(readFileSync(join(out, "plan.json"), "utf8"));
+    const blocks = plan.entities.filter(
+      (e: Entity) => e.type === "block",
+    ) as Block[];
+    assert.equal(blocks.length, 1);
+    assert.equal(blocks[0].kind, "text");
+    assert.match(
+      blocks[0].html,
+      /<p>Eerste alinea\.<\/p>\s*<p>Tweede <strong>alinea<\/strong>\.<\/p>/,
+    );
+    assert.match(blocks[0].html, /<li>Idee<ul>\s*<li>Onderdeel<\/li>/);
+    assert.match(blocks[0].html, /<h2>Details<\/h2>/);
+    assert.match(blocks[0].html, /Laatste alinea/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

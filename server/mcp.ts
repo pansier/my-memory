@@ -17,11 +17,76 @@ import {
   type Entity,
 } from "../shared/model.ts";
 import { parseDate } from "./dates.ts";
+import {
+  importSchema,
+  importRecords,
+  importSummary,
+  previewReplacement,
+  replaceImport,
+  applyImport,
+  previewUndo,
+  undoImport,
+} from "./imports.ts";
 const output = (data: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(data) }],
 });
 export function makeMcp(store: Store) {
   const server = new McpServer({ name: "my-memory", version: "1.0.0" });
+  server.registerTool(
+    "list_imports",
+    {
+      description:
+        "Read scoped import history without exporting private database contents.",
+      inputSchema: {},
+    },
+    async () => output(importRecords(store).map(importSummary)),
+  );
+  server.registerTool(
+    "import_notes",
+    {
+      description:
+        "Atomically import a prepared batch of new notes and folders. Upload referenced attachments first. Never schedule inferred dates.",
+      inputSchema: { plan: importSchema },
+    },
+    async ({ plan }) => output(applyImport(store, plan)),
+  );
+  server.registerTool(
+    "preview_import_replacement",
+    {
+      description:
+        "Preview replacement of one Apple Notes import; independently edited or deleted pages and all unrelated content are protected.",
+      inputSchema: { previousImportId: id, plan: importSchema },
+    },
+    async ({ previousImportId, plan }) =>
+      output(previewReplacement(store, previousImportId, plan)),
+  );
+  server.registerTool(
+    "replace_import",
+    {
+      description:
+        "Replace a reviewed Apple Notes import atomically using the saved source export. Preserves edited pages, folders, unrelated data and attachment IDs. Records an undo snapshot. Only use on explicit request.",
+      inputSchema: { previousImportId: id, plan: importSchema },
+    },
+    async ({ previousImportId, plan }) =>
+      output(replaceImport(store, previousImportId, plan)),
+  );
+  server.registerTool(
+    "preview_import_undo",
+    {
+      description: "Preview undo protection for a specific import.",
+      inputSchema: { importId: id },
+    },
+    async ({ importId }) => output(previewUndo(store, importId)),
+  );
+  server.registerTool(
+    "undo_import",
+    {
+      description:
+        "Undo one import only on request, preserving later edits. For a replacement, restores the prior pages.",
+      inputSchema: { importId: id },
+    },
+    async ({ importId }) => output(undoImport(store, importId)),
+  );
   server.registerTool(
     "read_project",
     {
@@ -137,6 +202,7 @@ export function makeMcp(store: Store) {
       },
     },
     async ({ html, noteId, heading, kind, dueAt }) => {
+      let edits: Entity[] = [];
       let block = {
         ...newBlock(noteId ?? null, html, kind),
         dueAt: dueAt ? new Date(dueAt).toISOString() : null,
@@ -149,8 +215,9 @@ export function makeMcp(store: Store) {
         );
         if (result.needsClarification) return output(result);
         block = result.block;
+        edits = result.edits ?? [];
       }
-      return output(store.saveEntities([block]));
+      return output(store.saveEntities([...edits, block]));
     },
   );
   server.registerTool(

@@ -40,3 +40,13 @@ Tools:
 - `parse_date(phrase, timezone, reference?)`: tijdzonebewust datumvoorstel; pas plannen nadat dit is gevraagd.
 
 AI-werkwijze: lees eerst actuele inhoud, stel bij ontbrekend/ambigu kopje een vraag, voeg vervolgens één blok toe. Bij conflicten opnieuw lezen. Behoud ideeën als bron; afvinken alleen bij bevestigde uitvoering of een expliciet verzoek. Geen extra bevestigingsdialoog in de webapp.
+
+## Apple Notities vervangen
+
+- `list_imports()`: importgeschiedenis en samenvattingen.
+- `import_notes(plan)`: atomair nieuwe notities, mappen en punten importeren.
+- `preview_import_replacement(previousImportId, plan)`: toont vervangbare en beschermde bronnotities.
+- `replace_import(previousImportId, plan)`: vervangt uitsluitend onaangeraakte pagina’s uit die import; hercontroleert bescherming binnen de transactie. Behoudt mappen, notitie-ID’s en bijlagen en slaat herstelinhoud op.
+- `preview_import_undo(importId)` en `undo_import(importId)`: scoped terugdraaien, bij een vervanging met herstel van vorige pagina’s. Later gewijzigd werk blijft bewaard.
+
+Het huidige HTML-schema ondersteunt ook native kopjes, lijsten, links, citaten, code en tabellen; `server/store.ts:cleanHtml` bepaalt de veilige tags/attributen. Kopjes binnen één doorlopend tekstonderdeel worden door MCP afzonderlijk herkend. Een gerichte toevoeging splitst waar nodig de sectie en behoudt alle omliggende tekst.
