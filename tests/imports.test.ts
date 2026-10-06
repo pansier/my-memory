@@ -213,7 +213,7 @@ test("replacement is atomic and idempotent, protects edited pages and folders; u
   assert.equal(s.get(a.id)?.deleted, false);
   assert.equal(s.get(n.id)?.version, 1);
   assert.equal(importRecords(s).length, 1);
-  replaceImport(s, oldId, plan);
+  assert.equal(replaceImport(s, oldId, plan).folders, 1);
   replaceImport(s, oldId, plan);
   assert.equal(importRecords(s).length, 2);
   assert.equal(s.get(a.id)?.deleted, true);

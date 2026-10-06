@@ -18,6 +18,7 @@ type Record = {
   undoneAt: string | null;
   entities: Entity[];
   warnings: string[];
+  folderCount?: number;
   replacedBy?: string | null;
   replacement?: { previousId: string; before: Entity[]; fingerprint: string };
 };
@@ -35,7 +36,8 @@ export function importSummary(r: Record) {
     createdAt: r.createdAt,
     undoneAt: r.undoneAt,
     notes: r.entities.filter((e) => e.type === "note").length,
-    folders: r.entities.filter((e) => e.type === "folder").length,
+    folders:
+      r.folderCount ?? r.entities.filter((e) => e.type === "folder").length,
     warnings: r.warnings,
     replacedBy: r.replacedBy ?? null,
     replacement: !!r.replacement,
@@ -345,6 +347,7 @@ export function replaceImport(
       createdAt: now(),
       undoneAt: null,
       replacement: { previousId, before, fingerprint },
+      folderCount: input.entities.filter((e) => e.type === "folder").length,
     };
     store.db
       .prepare("INSERT INTO imports VALUES(?,?)")
