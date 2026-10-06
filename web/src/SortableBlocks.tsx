@@ -43,6 +43,7 @@ function SortablePoint({
   return (
     <div
       ref={setNodeRef}
+      id={`point-${block.id}`}
       data-block-id={block.id}
       className={`point-container sortable-point ${isDragging ? "is-dragging" : ""}`}
       style={{ transform: CSS.Transform.toString(transform), transition }}
@@ -71,6 +72,7 @@ export function SortableBlocks({
   const [dragged, setDragged] = useState<{
     block: Block;
     height: number;
+    offset: { x: number; y: number };
   } | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -102,11 +104,20 @@ export function SortableBlocks({
       }}
       onDragStart={({ active }) => {
         const block = blocks.find((b) => b.id === active.id);
-        if (block)
+        if (block) {
+          const rect = document
+            .getElementById(`point-${block.id}`)
+            ?.getBoundingClientRect();
+          const initial = active.rect.current.initial;
           setDragged({
             block,
-            height: active.rect.current.initial?.height ?? 54,
+            height: rect?.height ?? initial?.height ?? 54,
+            offset: {
+              x: (rect?.left ?? 0) - (initial?.left ?? rect?.left ?? 0),
+              y: (rect?.top ?? 0) - (initial?.top ?? rect?.top ?? 0),
+            },
           });
+        }
       }}
       onDragCancel={() => setDragged(null)}
       onDragEnd={async ({ active, over }) => {
@@ -131,7 +142,19 @@ export function SortableBlocks({
         ))}
       </SortableContext>
       {createPortal(
-        <DragOverlay dropAnimation={null} zIndex={90}>
+        <DragOverlay
+          dropAnimation={null}
+          zIndex={90}
+          modifiers={[
+            // A handle can scroll into view before activation; the cached initial
+            // rectangle may still use the old scroll position.
+            ({ transform }) => ({
+              ...transform,
+              x: transform.x + (dragged?.offset.x ?? 0),
+              y: transform.y + (dragged?.offset.y ?? 0),
+            }),
+          ]}
+        >
           {dragged && (
             <div
               className={`drag-preview kind-${dragged.block.kind}`}

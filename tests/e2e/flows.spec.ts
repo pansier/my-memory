@@ -741,6 +741,7 @@ test("dragging makes room before drop, persists offline and supports keyboard ca
     beta = row("Beta"),
     gamma = row("Gamma");
   const handle = alpha.getByRole("button", { name: "Punt verplaatsen" });
+  await gamma.scrollIntoViewIfNeeded();
   await handle.hover();
   const start = (await handle.boundingBox())!;
   const end = (await gamma.boundingBox())!;
@@ -755,7 +756,12 @@ test("dragging makes room before drop, persists offline and supports keyboard ca
   await expect
     .poll(async () => (await beta.boundingBox())!.y)
     .toBeLessThan(betaBefore - 20);
-  await page.screenshot({ path: "/private/tmp/my-memory-drag-preview.png" });
+  await expect(page.locator(".drag-preview")).toBeVisible();
+  await expect.poll(async () => {
+    const preview = (await page.locator(".drag-preview").boundingBox())!;
+    return Math.abs(preview.y + preview.height / 2 - (end.y + end.height / 2));
+  }).toBeLessThan(60);
+  await page.screenshot({ path: test.info().outputPath("drag-preview.png") });
   await page.mouse.up();
   const order = () =>
     page
