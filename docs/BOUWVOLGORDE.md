@@ -2,7 +2,7 @@
 
 Bron: Todoist-project **My Memory**, overgenomen op 6 oktober 2026. Alle 20 stappen stonden open. Titels en beschrijvingen zijn ongewijzigd overgenomen; de links koppelen iedere stap aan GitHub en de oorspronkelijke Todoist-taak.
 
-Lees ook de [bouwbrief](BOUWBRIEF.md). De app is nog niet gebouwd. Begin bij stap 01; hosting volgt bij stap 20.
+Lees ook de [bouwbrief](BOUWBRIEF.md). Dit is de oorspronkelijke momentopname; de actuele bouwstatus staat in [Voortgang](VOORTGANG.md). De bouw begint bij stap 01; hosting volgt bij stap 20.
 
 ## 01. Lokaal project en ontwikkelomgeving opzetten
 
