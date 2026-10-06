@@ -652,3 +652,68 @@ test("folders, editable tables and PDF attachments work; import undo is scoped",
     page.locator(".folder-nav").getByRole("button", { name: /Reizen/ }),
   ).toBeVisible();
 });
+
+test("mobile settings close without leaving a scrim or tinting the status area", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await login(page);
+  // Model the standalone safe area separately from Chromium's zero inset.
+  await page.evaluate(() =>
+    document.documentElement.style.setProperty("--safe-area-top", "59px"),
+  );
+  const statusArea = async () =>
+    page.evaluate(() => {
+      const style = getComputedStyle(document.body, "::before");
+      return {
+        background: style.backgroundColor,
+        height: style.height,
+        pointerEvents: style.pointerEvents,
+      };
+    });
+  await expect
+    .poll(statusArea)
+    .toEqual({
+      background: "rgb(247, 247, 243)",
+      height: "59px",
+      pointerEvents: "none",
+    });
+  for (const closeWithBackdrop of [false, true]) {
+    await page.getByRole("button", { name: "Navigatie openen" }).click();
+    await expect(page.locator(".sidebar.open")).toHaveCount(1);
+    await page.locator(".account").click();
+    await expect(
+      page.getByRole("dialog", { name: "Instellingen" }),
+    ).toBeVisible();
+    await expect(page.locator(".sidebar-scrim")).toHaveCount(0);
+    await expect
+      .poll(statusArea)
+      .toEqual({
+        background: "rgb(247, 247, 243)",
+        height: "59px",
+        pointerEvents: "none",
+      });
+    if (closeWithBackdrop)
+      await page.locator(".modal-backdrop").click({ position: { x: 3, y: 3 } });
+    else
+      await page.getByRole("button", { name: "Sluiten", exact: true }).click();
+    await expect(
+      page.locator(".modal-backdrop, .sidebar-scrim, .sidebar.open"),
+    ).toHaveCount(0);
+    await expect
+      .poll(statusArea)
+      .toEqual({
+        background: "rgb(247, 247, 243)",
+        height: "59px",
+        pointerEvents: "none",
+      });
+    expect(
+      await page
+        .locator(".topbar")
+        .evaluate((el) => el.getBoundingClientRect().top),
+    ).toBe(59);
+  }
+  await page.getByRole("button", { name: "Navigatie openen" }).click();
+  await page.locator(".sidebar-scrim").click({ position: { x: 350, y: 10 } });
+  await expect(page.locator(".sidebar-scrim, .sidebar.open")).toHaveCount(0);
+});

@@ -665,7 +665,13 @@ export function App() {
           <button className="new-note" onClick={() => setNewDialog(true)}>
             <Plus size={17} /> Nieuwe notitie
           </button>
-          <button className="account" onClick={() => setSettings(true)}>
+          <button
+            className="account"
+            onClick={() => {
+              setMobile(false);
+              setSettings(true);
+            }}
+          >
             <span className="avatar">
               {(s.account?.username ?? "A").slice(0, 1).toUpperCase()}
             </span>
